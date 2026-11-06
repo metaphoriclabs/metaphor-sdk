@@ -1,0 +1,35 @@
+{
+  "name": "@metaphoriclabs/bench",
+  "version": "0.0.0",
+  "description": "The published benchmark: questions, expected answers, prompts and a runner.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/metaphoriclabs/metaphor-sdk.git",
+    "directory": "bench"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsdown src/index.ts --dts",
+    "typecheck": "tsc"
+  },
+  "devDependencies": {
+    "tsdown": "catalog:",
+    "typescript": "catalog:"
+  }
+}

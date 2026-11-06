@@ -1,0 +1,16 @@
+{
+  "name": "@metaphoriclabs/examples",
+  "private": true,
+  "description": "Runnable examples. CI typechecks them against the current SDK.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@metaphoriclabs/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  }
+}

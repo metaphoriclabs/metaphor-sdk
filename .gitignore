@@ -1,0 +1,10 @@
+# metaphor-sdk has no other .gitignore. In Metaphor's main repository, the root one also applies.
+node_modules/
+dist/
+coverage/
+.venv/
+__pycache__/
+*.pyc
+.env*
+!.env.example
+.DS_Store

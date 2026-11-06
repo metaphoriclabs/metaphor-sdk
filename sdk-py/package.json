@@ -1,0 +1,9 @@
+{
+  "name": "@metaphoriclabs/sdk-py",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Lets Changesets version the Python SDK. Not published to npm.",
+  "scripts": {
+    "sync-version": "uv version --frozen \"$npm_package_version\""
+  }
+}

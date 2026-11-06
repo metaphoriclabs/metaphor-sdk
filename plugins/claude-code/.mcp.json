@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "metaphor": {
+      "command": "npx",
+      "args": ["-y", "@metaphoriclabs/mcp"],
+      "env": { "METAPHOR_API_KEY": "${METAPHOR_API_KEY}" }
+    }
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "name": "@metaphoriclabs/brand",
+  "version": "0.0.0",
+  "description": "Metaphor design tokens, as TypeScript values and a Tailwind theme.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/metaphoriclabs/metaphor-sdk.git",
+    "directory": "brand"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./theme.css": "./theme.css"
+  },
+  "files": [
+    "dist",
+    "theme.css"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "./theme.css": "./theme.css"
+    }
+  },
+  "scripts": {
+    "build": "tsdown src/index.ts --dts",
+    "generate": "node scripts/generate.ts && biome format --write theme.css",
+    "typecheck": "tsc",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

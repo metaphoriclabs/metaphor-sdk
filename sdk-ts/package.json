@@ -1,0 +1,38 @@
+{
+  "name": "@metaphoriclabs/sdk",
+  "version": "0.0.0",
+  "description": "TypeScript SDK for the Metaphor API.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/metaphoriclabs/metaphor-sdk.git",
+    "directory": "sdk-ts"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsdown src/index.ts --dts",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@metaphoriclabs/contract": "workspace:^"
+  },
+  "devDependencies": {
+    "tsdown": "catalog:",
+    "typescript": "catalog:"
+  }
+}

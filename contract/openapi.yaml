@@ -1,0 +1,30 @@
+openapi: 3.1.0
+info:
+  title: Metaphor API
+  version: "1"
+servers:
+  - url: https://api.metaphoric.io
+components:
+  schemas:
+    Health:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+      required:
+        - status
+  parameters: {}
+paths:
+  /health:
+    get:
+      summary: Check the API is up
+      responses:
+        "200":
+          description: The API is up.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+webhooks: {}

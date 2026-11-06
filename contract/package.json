@@ -1,0 +1,46 @@
+{
+  "name": "@metaphoriclabs/contract",
+  "version": "0.0.0",
+  "description": "The Metaphor API contract: Zod schemas, routes and the OpenAPI document.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/metaphoriclabs/metaphor-sdk.git",
+    "directory": "contract"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./openapi.yaml": "./openapi.yaml"
+  },
+  "files": [
+    "dist",
+    "openapi.yaml"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "./openapi.yaml": "./openapi.yaml"
+    }
+  },
+  "scripts": {
+    "build": "tsdown src/index.ts --dts",
+    "generate": "node scripts/generate.ts && biome format --write openapi.yaml",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@hono/zod-openapi": "catalog:",
+    "hono": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "yaml": "catalog:"
+  }
+}

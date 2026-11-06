@@ -1,0 +1,65 @@
+{
+  "name": "@metaphoriclabs/connectors",
+  "version": "0.0.0",
+  "description": "Connectors that turn other tools' data into Metaphor memories.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/metaphoriclabs/metaphor-sdk.git",
+    "directory": "connectors"
+  },
+  "type": "module",
+  "exports": {
+    "./slack": "./src/slack/index.ts",
+    "./github": "./src/github/index.ts",
+    "./gmail": "./src/gmail/index.ts",
+    "./gcal": "./src/gcal/index.ts",
+    "./gdocs": "./src/gdocs/index.ts",
+    "./gdirectory": "./src/gdirectory/index.ts",
+    "./meetings": "./src/meetings/index.ts"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      "./slack": {
+        "types": "./dist/slack.d.mts",
+        "default": "./dist/slack.mjs"
+      },
+      "./github": {
+        "types": "./dist/github.d.mts",
+        "default": "./dist/github.mjs"
+      },
+      "./gmail": {
+        "types": "./dist/gmail.d.mts",
+        "default": "./dist/gmail.mjs"
+      },
+      "./gcal": {
+        "types": "./dist/gcal.d.mts",
+        "default": "./dist/gcal.mjs"
+      },
+      "./gdocs": {
+        "types": "./dist/gdocs.d.mts",
+        "default": "./dist/gdocs.mjs"
+      },
+      "./gdirectory": {
+        "types": "./dist/gdirectory.d.mts",
+        "default": "./dist/gdirectory.mjs"
+      },
+      "./meetings": {
+        "types": "./dist/meetings.d.mts",
+        "default": "./dist/meetings.mjs"
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc"
+  },
+  "devDependencies": {
+    "tsdown": "catalog:",
+    "typescript": "catalog:"
+  }
+}
