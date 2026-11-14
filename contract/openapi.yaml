@@ -5,6 +5,11 @@ info:
 servers:
   - url: https://api.metaphoric.io
 components:
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      description: "An API key, sent as `Authorization: Bearer <key>`."
   schemas:
     Health:
       type: object
@@ -15,6 +20,134 @@ components:
             - ok
       required:
         - status
+    NewApiKey:
+      allOf:
+        - $ref: "#/components/schemas/ApiKey"
+        - type: object
+          properties:
+            key:
+              type: string
+              description: The key itself. It is shown once.
+          required:
+            - key
+    Scope:
+      type: string
+      enum:
+        - memories:read
+        - memories:write
+        - memories:forget
+        - keys:manage
+    ApiKey:
+      type: object
+      properties:
+        id:
+          type: string
+          pattern: ^[0-9a-f]{16}$
+          example: 9f2c4e6a8b0d1f35
+        name:
+          type: string
+        scopes:
+          type: array
+          items:
+            $ref: "#/components/schemas/Scope"
+        user_id:
+          type:
+            - string
+            - "null"
+          description: The one user the key may act for. Null for a key of the tenant's
+            own server.
+        created_at:
+          type: string
+          format: date-time
+          example: 2027-01-31T09:30:00Z
+        expires_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+          example: 2027-01-31T09:30:00Z
+          description: Null for a key that never expires.
+        revoked_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+          example: 2027-01-31T09:30:00Z
+          description: Null for a key that is not revoked.
+        made_by:
+          type:
+            - string
+            - "null"
+          pattern: ^[0-9a-f]{16}$
+          example: 9f2c4e6a8b0d1f35
+          description: The ID of the key that made this one. Null for a key Metaphor made
+            for the tenant. Revoking a key does not revoke the keys it made.
+      required:
+        - id
+        - name
+        - scopes
+        - user_id
+        - created_at
+        - expires_at
+        - revoked_at
+        - made_by
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+          required:
+            - code
+            - message
+      required:
+        - error
+    CreateApiKey:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: "Your label for the key: 1 to 64 visible characters, single spaces
+            between."
+        scopes:
+          type: array
+          items:
+            $ref: "#/components/schemas/Scope"
+          minItems: 1
+          maxItems: 4
+        user_id:
+          type:
+            - string
+            - "null"
+          minLength: 1
+          maxLength: 256
+          default: null
+        expires_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+          default: null
+          example: 2027-01-31T09:30:00Z
+      required:
+        - name
+        - scopes
+      additionalProperties: false
+    ApiKeyList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApiKey"
+      required:
+        - data
   parameters: {}
 paths:
   /health:
@@ -27,4 +160,165 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Health"
+  /v1/keys:
+    post:
+      summary: Make an API key
+      description: "Needs `keys:manage`. The new key does no more than the key that
+        asks: no scope that key lacks, no other user, and no later expiry. A
+        tenant holds a limited number of working keys, and fewer for any one
+        user."
+      security: &a1
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateApiKey"
+      responses:
+        "201":
+          description: The key was made.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NewApiKey"
+        "400":
+          description: The request is not valid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: No valid API key was sent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The API key does not allow this.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The tenant or the user holds as many working keys as it may. Revoke
+            one first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "413":
+          description: The request body is too large.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "415":
+          description: The body was not sent as `application/json`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: The tenant's keys made as many keys as they may in 24 hours. Try
+            again later.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Something went wrong. Try again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: The request could not be checked. Try again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    get:
+      summary: List API keys
+      description: Needs `keys:manage`. A key held to one user lists that user's keys.
+        Revoked and expired keys are listed until their records are dropped.
+      security: *a1
+      responses:
+        "200":
+          description: The keys, oldest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiKeyList"
+        "401":
+          description: No valid API key was sent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The API key does not allow this.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Something went wrong. Try again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: The request could not be checked. Try again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /v1/keys/{key_id}:
+    delete:
+      summary: Revoke an API key
+      description: Needs `keys:manage`. A revoked key is refused from then on and is
+        never made good again. Revoking a revoked key changes nothing.
+      security: *a1
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[0-9a-f]{16}$
+            example: 9f2c4e6a8b0d1f35
+          required: true
+          name: key_id
+          in: path
+      responses:
+        "204":
+          description: The key is revoked.
+        "401":
+          description: No valid API key was sent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The API key does not allow this.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Something went wrong. Try again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: The request could not be checked. Try again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 webhooks: {}
