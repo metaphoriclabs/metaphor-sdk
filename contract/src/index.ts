@@ -30,6 +30,9 @@ const refused = (description: string) => ({
 const keyed = {
   401: refused("No valid API key was sent."),
   403: refused("The API key does not allow this."),
+  429: refused(
+    "The API key sent more than 600 requests in a minute. Wait the seconds `Retry-After` gives.",
+  ),
   500: refused("Something went wrong. Try again."),
   503: refused("The request could not be checked. Try again."),
 };
@@ -113,7 +116,9 @@ export const createApiKeyRoute = createRoute({
     409: refused("The tenant or the user holds as many working keys as it may. Revoke one first."),
     413: refused("The request body is too large."),
     415: refused("The body was not sent as `application/json`."),
-    429: refused("The tenant's keys made as many keys as they may in 24 hours. Try again later."),
+    429: refused(
+      "The API key sent more than 600 requests in a minute, or the tenant's keys made as many keys as they may in 24 hours. Wait the seconds `Retry-After` gives.",
+    ),
   },
 });
 
