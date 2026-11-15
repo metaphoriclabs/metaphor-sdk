@@ -220,9 +220,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "429":
-          description: The API key sent more than 600 requests in a minute, the tenant's
-            keys together more than 6000, or the tenant's keys made as many keys
-            as they may in 24 hours. Wait the seconds `Retry-After` gives.
+          description: The API key sent more than 600 requests in a minute, the user's
+            keys together more than 2000, the tenant's keys together more than
+            6000, or the tenant's keys made as many keys as they may in 24
+            hours. Wait the seconds `Retry-After` gives.
           content:
             application/json:
               schema:
@@ -264,9 +265,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "429":
-          description: The API key sent more than 600 requests in a minute, or the
-            tenant's keys together more than 6000. Wait the seconds
-            `Retry-After` gives.
+          description: The API key sent more than 600 requests in a minute, the user's
+            keys together more than 2000, or the tenant's keys together more
+            than 6000. Wait the seconds `Retry-After` gives.
           content:
             application/json:
               schema:
@@ -319,9 +320,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "429":
-          description: The API key sent more than 600 requests in a minute, or the
-            tenant's keys together more than 6000. Wait the seconds
-            `Retry-After` gives.
+          description: The API key sent more than 600 requests in a minute, the user's
+            keys together more than 2000, or the tenant's keys together more
+            than 6000. Wait the seconds `Retry-After` gives.
           content:
             application/json:
               schema:
