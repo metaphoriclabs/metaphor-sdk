@@ -15,9 +15,64 @@ export const healthRoute = createRoute({
   },
 });
 
-/** The body of every answer that is not a success. `code` is fixed and `message` is for people. */
+/**
+ * Every code an answer that is not a success can carry, and the HTTP status it always comes
+ * with. A code is never renamed or given another status: a client may branch on it. New codes
+ * may be added, so a client treats one it does not know by its status alone.
+ */
+export const ERROR_STATUS = {
+  "invalid-request": 400,
+  unauthenticated: 401,
+  forbidden: 403,
+  "not-found": 404,
+  "key-limit": 409,
+  "too-large": 413,
+  "unsupported-media-type": 415,
+  "rate-limited": 429,
+  internal: 500,
+  unavailable: 503,
+} as const satisfies Record<string, number>;
+
+const ERROR_CODES = Object.keys(ERROR_STATUS) as [
+  keyof typeof ERROR_STATUS,
+  ...(keyof typeof ERROR_STATUS)[],
+];
+
+/** What went wrong, as a fixed code. The status that comes with each is in `ERROR_STATUS`. */
+export const ErrorCode = z.enum(ERROR_CODES).openapi("ErrorCode", {
+  description: [
+    "What went wrong. Each code always comes with the one HTTP status:",
+    "",
+    "- `invalid-request` (400): the request is not valid. `message` names the fields that are wrong.",
+    "- `unauthenticated` (401): no valid API key was sent.",
+    "- `forbidden` (403): the API key does not allow this.",
+    "- `not-found` (404): no such route, or no such thing at it.",
+    "- `key-limit` (409): the tenant or the user holds as many working keys as it may.",
+    "- `too-large` (413): the request body is too large.",
+    "- `unsupported-media-type` (415): the body was not sent as `application/json`.",
+    "- `rate-limited` (429): too many requests. Wait the seconds `Retry-After` gives.",
+    "- `internal` (500): something went wrong. Try again.",
+    "- `unavailable` (503): the request could not be checked. Try again.",
+    "",
+    "New codes may be added. Treat one you do not know by its status.",
+  ].join("\n"),
+});
+export type ErrorCode = z.infer<typeof ErrorCode>;
+
+/**
+ * The body of every answer that is not a success. `code` is fixed and `message` is for people.
+ * `code` is a string, not the enum, so a client made today still reads a code added later.
+ */
 export const ApiError = z
-  .object({ error: z.object({ code: z.string(), message: z.string() }) })
+  .object({
+    error: z.object({
+      code: z.string().openapi({
+        description:
+          "One of `ErrorCode`, or a code added since. Treat a code you do not know by its status.",
+      }),
+      message: z.string(),
+    }),
+  })
   .openapi("Error");
 export type ApiError = z.infer<typeof ApiError>;
 
@@ -168,6 +223,8 @@ export function openApiDocument(): ReturnType<OpenAPIHono["getOpenAPI31Document"
     scheme: "bearer",
     description: "An API key, sent as `Authorization: Bearer <key>`.",
   });
+  // ErrorCode is listed though no field refers to it: Error's `code` is an open string.
+  app.openAPIRegistry.register("ErrorCode", ErrorCode);
   for (const route of routes) app.openAPIRegistry.registerPath(route);
   return app.getOpenAPI31Document({
     openapi: "3.1.0",
