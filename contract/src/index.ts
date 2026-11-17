@@ -159,7 +159,10 @@ export const CreateApiKey = z
       .string()
       .min(1)
       .max(256)
-      .regex(/^(?!metaphor:)[!#-[\]-~]+$/, "A key is held to an end user, never to a member.")
+      .regex(
+        /^(?!metaphor:)[!#-[\]-~]+$/,
+        "A key's user is visible ASCII but \" and \\, and never a member's metaphor: ID.",
+      )
       .nullable()
       .default(null)
       .openapi({
