@@ -15,10 +15,24 @@ export const healthRoute = createRoute({
   },
 });
 
+/** Every code an answer that is not a success can carry. */
+const ERROR_CODES = [
+  "invalid-request",
+  "unauthenticated",
+  "forbidden",
+  "not-found",
+  "key-limit",
+  "too-large",
+  "unsupported-media-type",
+  "rate-limited",
+  "internal",
+  "unavailable",
+] as const;
+
 /**
- * Every code an answer that is not a success can carry, and the HTTP status it always comes
- * with. A code is never renamed or given another status: a client may branch on it. New codes
- * may be added, so a client treats one it does not know by its status alone.
+ * The HTTP status each code always comes with: one entry for every code in `ERROR_CODES`, and
+ * no other. A code is never renamed or given another status: a client may branch on it. New
+ * codes may be added, so a client treats one it does not know by its status alone.
  */
 export const ERROR_STATUS = {
   "invalid-request": 400,
@@ -31,12 +45,7 @@ export const ERROR_STATUS = {
   "rate-limited": 429,
   internal: 500,
   unavailable: 503,
-} as const satisfies Record<string, number>;
-
-const ERROR_CODES = Object.keys(ERROR_STATUS) as [
-  keyof typeof ERROR_STATUS,
-  ...(keyof typeof ERROR_STATUS)[],
-];
+} as const satisfies Record<(typeof ERROR_CODES)[number], number>;
 
 /** What went wrong, as a fixed code. The status that comes with each is in `ERROR_STATUS`. */
 export const ErrorCode = z.enum(ERROR_CODES).openapi("ErrorCode", {
