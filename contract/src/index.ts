@@ -550,7 +550,7 @@ export const RecallItem = z
     occurred_at: Time.nullable().openapi({ description: "When it happened, if known." }),
     memory_ids: z.array(MemoryId).max(20).openapi({
       description:
-        "Up to 20 of the memories this line was made from, each one a memory the user can see.",
+        "Up to 20 of the memories this line was made from, each one a memory the user can see. The newest come first, by the minute each was written. Memories written in the same minute come in order of ID, not the order they were written.",
     }),
   })
   .openapi("RecallItem");
@@ -820,12 +820,16 @@ export const recallRoute = createRoute({
   },
   responses: {
     200: {
-      description: "The lines, most useful first.",
+      description:
+        "The lines, in the order they are best read. None when nothing in the space answers the question.",
       content: { "application/json": { schema: Recall } },
     },
     ...acting,
     413: tooLarge(BODY_LIMITS.recall),
     415: json,
+    503: refused(
+      "The request could not be checked, or the tenant is not set up to recall yet. Try again later.",
+    ),
   },
 });
 
@@ -983,6 +987,7 @@ export const routes = [
   listApiKeysRoute,
   revokeApiKeyRoute,
   writeMemoryRoute,
+  recallRoute,
 ];
 
 /**
@@ -995,7 +1000,6 @@ export const draftRoutes = [
   deleteSpaceRoute,
   listMemoriesRoute,
   getMemoryRoute,
-  recallRoute,
   forgetRoute,
   getForgetRoute,
   undoForgetRoute,

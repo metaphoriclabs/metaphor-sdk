@@ -340,6 +340,66 @@ components:
         never in `project`. There is no entry for everyone, and none that
         denies."
       example: group:api:finance
+    Recall:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecallItem"
+      required:
+        - items
+    RecallItem:
+      type: object
+      properties:
+        text:
+          type: string
+        heading:
+          type:
+            - string
+            - "null"
+        occurred_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+          example: 2027-01-31T09:30:00Z
+          description: When it happened, if known.
+        memory_ids:
+          type: array
+          items:
+            type: string
+            pattern: ^[0-9a-f]{32}$
+            description: A memory's ID, made from its source. The same source gives the same
+              ID in every space, so an ID names a memory only within its space.
+            example: 4f1c9a7e2b8d06c3a5e9f17b20d4c8e6
+          maxItems: 20
+          description: Up to 20 of the memories this line was made from, each one a memory
+            the user can see. The newest come first, by the minute each was
+            written. Memories written in the same minute come in order of ID,
+            not the order they were written.
+      required:
+        - text
+        - heading
+        - occurred_at
+        - memory_ids
+    RecallRequest:
+      type: object
+      properties:
+        question:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          description: The question, in the user's words. It is never written to a log.
+        budget:
+          type: integer
+          minimum: 100
+          maximum: 10000
+          default: 2000
+          description: The most tokens the answer's lines may take together.
+      required:
+        - question
+      additionalProperties: false
   parameters: {}
 paths:
   /health:
@@ -632,6 +692,103 @@ paths:
         "503":
           description: The request could not be checked, or the tenant is not set up to
             take memories yet. Try again later.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /v1/spaces/{space_id}/recall:
+    post:
+      summary: Recall
+      description: Needs `memories:read`. The context for a question from one space.
+        Recall never returns a memory the user cannot see, or anything made from
+        one. The body may be up to 65,536 bytes.
+      security: *a1
+      parameters:
+        - schema:
+            $ref: "#/components/schemas/SpaceId"
+          required: true
+          description: "`personal` for the acting user's own space, or a shared space's
+            ID: 1 to 63 lowercase letters, digits and hyphens, starting with a
+            letter or digit. `personal` always answers: before the user's first
+            write it holds nothing."
+          name: space_id
+          in: path
+        - schema:
+            $ref: "#/components/schemas/UserId"
+          required: false
+          description: The user this request acts for. Required for a key of your own
+            server; a key held to a user may leave it out, or send that user's
+            ID. A server key acts for a member only where the owner turned that
+            on for the project, and each such request is recorded.
+          name: metaphor-user
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecallRequest"
+      responses:
+        "200":
+          description: The lines, in the order they are best read. None when nothing in
+            the space answers the question.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recall"
+        "400":
+          description: The request is not valid, or names no user to act for.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: No valid API key was sent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The API key does not allow this, or not for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such shared space.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "413":
+          description: The request body is longer than 65,536 bytes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "415":
+          description: The body was not sent as `application/json`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: The API key sent more than 600 requests in a minute, the user's
+            keys together more than 2000, or the tenant's keys together more
+            than 6000. Wait the seconds `Retry-After` gives.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Something went wrong. Try again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: The request could not be checked, or the tenant is not set up to
+            recall yet. Try again later.
           content:
             application/json:
               schema:
