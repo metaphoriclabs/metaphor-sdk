@@ -66,6 +66,10 @@ export const ApiKey = z
     created_at: Time,
     expires_at: Time.nullable().openapi({ description: "Null for a key that never expires." }),
     revoked_at: Time.nullable().openapi({ description: "Null for a key that is not revoked." }),
+    last_used_at: Time.nullable().openapi({
+      description:
+        "When the key last passed its check, to within an hour, even if the route's scopes then refused the request. Null for a key never used.",
+    }),
     made_by: KeyId.nullable().openapi({
       description:
         "The ID of the key that made this one. Null for a key Metaphor made for the tenant. Revoking a key does not revoke the keys it made.",

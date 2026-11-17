@@ -74,6 +74,14 @@ components:
           format: date-time
           example: 2027-01-31T09:30:00Z
           description: Null for a key that is not revoked.
+        last_used_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+          example: 2027-01-31T09:30:00Z
+          description: When the key last passed its check, to within an hour, even if the
+            route's scopes then refused the request. Null for a key never used.
         made_by:
           type:
             - string
@@ -90,6 +98,7 @@ components:
         - created_at
         - expires_at
         - revoked_at
+        - last_used_at
         - made_by
     Error:
       type: object
