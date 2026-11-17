@@ -102,7 +102,12 @@ components:
             - string
             - "null"
           description: The one user the key may act for. Null for a key of the tenant's
-            own server.
+            own server, and for a key whose user was erased.
+        held_to_user:
+          type: boolean
+          description: Whether the key was made for one user. A key whose user was erased
+            is revoked and keeps `true` here, with `user_id` null and its name
+            replaced, so nothing of the user's ID is left in it.
         created_at:
           type: string
           format: date-time
@@ -142,6 +147,7 @@ components:
         - name
         - scopes
         - user_id
+        - held_to_user
         - created_at
         - expires_at
         - revoked_at

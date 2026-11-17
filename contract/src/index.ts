@@ -128,7 +128,12 @@ export const ApiKey = z
     name: z.string(),
     scopes: z.array(Scope),
     user_id: z.string().nullable().openapi({
-      description: "The one user the key may act for. Null for a key of the tenant's own server.",
+      description:
+        "The one user the key may act for. Null for a key of the tenant's own server, and for a key whose user was erased.",
+    }),
+    held_to_user: z.boolean().openapi({
+      description:
+        "Whether the key was made for one user. A key whose user was erased is revoked and keeps `true` here, with `user_id` null and its name replaced, so nothing of the user's ID is left in it.",
     }),
     created_at: Time,
     expires_at: Time.nullable().openapi({ description: "Null for a key that never expires." }),
