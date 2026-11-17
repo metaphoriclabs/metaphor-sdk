@@ -1,4 +1,5 @@
 import type { RouteConfig } from "@hono/zod-openapi";
+import { Ajv2020 } from "ajv/dist/2020.js";
 import { describe, expect, it } from "vitest";
 import {
   ACTING_USER_HEADER,
@@ -320,36 +321,129 @@ describe("group routes", () => {
 });
 
 describe("the published document", () => {
-  // A generated client checks requests against the document, so it must refuse what the API refuses.
-  const schemas = (draft.components?.schemas ?? {}) as Record<string, { pattern?: string }>;
-  const pattern = (name: string) => new RegExp(schemas[name]?.pattern ?? "");
+  // A generated client checks requests against the document, so it must refuse what the API
+  // refuses, with the rules a JSON Schema validator in any language reads.
+  const draftSchemas = draft.components?.schemas ?? {};
+  const servedSchemas = openApiDocument(routes).components?.schemas ?? {};
+
+  /** The field `key` of `value`, when `value` is an object. */
+  const field = (value: unknown, key: string): unknown =>
+    typeof value === "object" && value !== null
+      ? Object.getOwnPropertyDescriptor(value, key)?.value
+      : undefined;
+
+  // A JSON Schema 2020-12 validator, as an SDK or a gateway checks a request against the
+  // document. OpenAPI's own words, such as `example`, are not JSON Schema's, so strict is off,
+  // and `format` is a note, as the document means it.
+  const validator = new Ajv2020({ strict: false, validateFormats: false });
+
+  /** Whether `schema`, as the document gives it, takes `value`. */
+  function admits(schema: unknown, value: unknown): boolean {
+    if (typeof schema !== "object" || schema === null) throw new Error("No such schema");
+    return validator.validate(schema, value);
+  }
+
+  const property = (schemas: object, name: string, key: string) =>
+    field(field(field(schemas, name), "properties"), key);
+
+  /** Every pattern anywhere in `value`. */
+  function patternsIn(value: unknown): string[] {
+    if (typeof value !== "object" || value === null) return [];
+    return Object.entries(value).flatMap(([key, inner]) =>
+      key === "pattern" && typeof inner === "string" ? [inner] : patternsIn(inner),
+    );
+  }
+
+  it("has no pattern that needs lookaround or a back-reference, which Go and Rust lack", () => {
+    const patterns = patternsIn(draft);
+    expect(patterns.length).toBeGreaterThan(10);
+    for (const pattern of patterns) expect(pattern).not.toMatch(/\(\?[=!<]|\\[1-9]/);
+  });
 
   it.each(["everyone", "deny:user:x", "user:metaphor:", "group:finance", "user:a b"])(
     "carries the rule that refuses the entry %s",
-    (value) => expect(pattern("Principal").test(value)).toBe(false),
+    (value) => expect(admits(field(draftSchemas, "Principal"), value)).toBe(false),
+  );
+
+  it.each(["project", "user:customer-4821", "user:metaphor:u1", "group:api:finance"])(
+    "takes the entry %s",
+    (value) => expect(admits(field(draftSchemas, "Principal"), value)).toBe(true),
   );
 
   it("refuses an entry listed twice", () => {
-    const put = JSON.stringify(schemas.PutSpace);
+    const put = JSON.stringify(field(draftSchemas, "PutSpace"));
     expect(put).toContain('"uniqueItems":true');
   });
 
   it("refuses a member's ID on erase", () => {
-    const erase = JSON.stringify(schemas.EraseUser);
-    const source = /"pattern":"((?:[^"\\]|\\.)*)"/.exec(erase)?.[1] ?? "";
-    const rule = new RegExp(JSON.parse(`"${source}"`));
-    expect(rule.test("metaphor:u1")).toBe(false);
-    expect(rule.test("customer-4821")).toBe(true);
+    const rule = property(draftSchemas, "EraseUser", "user_id");
+    expect(admits(rule, "metaphor:u1")).toBe(false);
+    expect(admits(rule, "customer-4821")).toBe(true);
   });
 
   it("refuses a member's ID on a key", () => {
     // Served now, so the rule must be in the document generated from served routes.
-    const create = JSON.stringify(openApiDocument(routes).components?.schemas?.CreateApiKey);
-    const source = /"pattern":"((?:[^"\\]|\\.)*)"/.exec(create)?.[1] ?? "";
-    const rule = new RegExp(JSON.parse(`"${source}"`));
-    expect(rule.test("metaphor:u1")).toBe(false);
-    expect(rule.test('a"b')).toBe(false);
-    expect(rule.test("customer-4821")).toBe(true);
+    const rule = property(servedSchemas, "CreateApiKey", "user_id");
+    expect(admits(rule, "metaphor:u1")).toBe(false);
+    expect(admits(rule, 'a"b')).toBe(false);
+    expect(admits(rule, "customer-4821")).toBe(true);
+    // A key of the tenant's own server, held to no user.
+    expect(admits(rule, null)).toBe(true);
+    expect(CreateApiKey.shape.user_id.safeParse(null).success).toBe(true);
+  });
+
+  it("refuses personal as a shared space's name", () => {
+    const space = deleteSpaceRoute.request.params;
+    expect(space.safeParse({ space_id: "personal" }).success).toBe(false);
+    expect(space.safeParse({ space_id: "support" }).success).toBe(true);
+    const [param] = draftPaths["/v1/spaces/{space_id}"]?.delete?.parameters ?? [];
+    const rule = field(param, "schema");
+    expect(admits(rule, "personal")).toBe(false);
+    expect(admits(rule, "support")).toBe(true);
+  });
+
+  it("shows a page's limit as a whole number from 1 to 100", () => {
+    const parameters = draftPaths["/v1/spaces/{space_id}/memories"]?.get?.parameters ?? [];
+    const limit = parameters.find((parameter) => field(parameter, "name") === "limit");
+    expect(field(limit, "schema")).toMatchObject({ type: "integer", minimum: 1, maximum: 100 });
+  });
+
+  const link = property(draftSchemas, "Source", "url");
+  const url = (value: string) => Source.safeParse({ name: "api", id: "a", url: value }).success;
+
+  it.each([
+    "http://a.example/a b",
+    "http://a.example/a\u0001",
+    "http://user:pass@a.example/",
+    "http://user@a.example/",
+    "http://a.example\\@b.example/",
+    "http://a.example\\b.example/",
+    " http://a.example/ ",
+    "http://a.example/a\tb",
+    "http://a.example/a\nb",
+    "https://a.example/\u00e9",
+    "ftp://a.example/",
+    "javascript:alert(1)",
+  ])("refuses the link %j, in the parse and in the document", (value) => {
+    expect(url(value)).toBe(false);
+    expect(admits(link, value)).toBe(false);
+  });
+
+  // The document's pattern cannot say what a URL parser does, so it takes some text the parse
+  // refuses. It never takes less than the parse.
+  it.each(["https://:", "http://a.b%"])("refuses the link %j in the parse alone", (value) => {
+    expect(url(value)).toBe(false);
+    expect(admits(link, value)).toBe(true);
+  });
+
+  it.each([
+    "https://a.example",
+    "http://a.example:8080/x?y=1#z",
+    "https://a.example/@who",
+    "http://[::1]/",
+  ])("takes the link %s, in the parse and in the document", (value) => {
+    expect(url(value)).toBe(true);
+    expect(admits(link, value)).toBe(true);
   });
 });
 

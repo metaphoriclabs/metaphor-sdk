@@ -152,20 +152,38 @@ export const NewApiKey = ApiKey.extend({
 export type NewApiKey = z.infer<typeof NewApiKey>;
 
 /** A field that is not one of these is refused, so a misspelt `expires_at` makes no key. */
+/**
+ * Visible ASCII but `"` and `\\`: what a user ID may hold. It is written without lookahead, which
+ * the regex engines of Go and Rust lack, so an SDK made from the contract can check it as sent.
+ */
+const USER_TEXT = /^[!#-[\]-~]+$/;
+
+/** A member's user ID starts with this. Metaphor issues them, so no request may send one. */
+const MEMBER = "metaphor:";
+
+/**
+ * An end user's ID as a request names it: 1 to 256 characters of USER_TEXT, not starting with
+ * MEMBER. The schema says so with `not`, and the parse checks it too.
+ */
+const endUserId = (message: string) =>
+  z
+    .string()
+    .min(1)
+    .max(256)
+    .regex(USER_TEXT, message)
+    .refine((id) => !id.startsWith(MEMBER), message)
+    // `pattern` takes anything but text, so `not` names the type, or a null user would fail it.
+    .openapi({ not: { type: "string", pattern: `^${MEMBER}` } });
+
 export const CreateApiKey = z
   .strictObject({
     name: z.string().min(1).max(64).openapi({
       description: "Your label for the key: 1 to 64 visible characters, single spaces between.",
     }),
     scopes: z.array(Scope).min(1).max(Scope.options.length),
-    user_id: z
-      .string()
-      .min(1)
-      .max(256)
-      .regex(
-        /^(?!metaphor:)[!#-[\]-~]+$/,
-        "A key's user is visible ASCII but \" and \\, and never a member's metaphor: ID.",
-      )
+    user_id: endUserId(
+      "A key's user is visible ASCII but \" and \\, and never a member's metaphor: ID.",
+    )
       .nullable()
       .default(null)
       .openapi({
@@ -350,10 +368,16 @@ export type GroupId = z.infer<typeof GroupId>;
 export const Principal = z
   .string()
   .regex(
-    /^(?:project|user:(?!metaphor:$)[!#-[\]-~]{1,256}|group:(?:api|console|slack|google|github):[A-Za-z0-9._-]{1,128})$/,
+    /^(?:project|user:[!#-[\]-~]{1,256}|group:(?:api|console|slack|google|github):[A-Za-z0-9._-]{1,128})$/,
+    "Not `project`, `user:<user ID>` or `group:<group ID>`.",
+  )
+  // `user:metaphor:` names no one: a member's ID is never empty after its prefix.
+  .refine(
+    (entry) => entry !== `user:${MEMBER}`,
     "Not `project`, `user:<user ID>` or `group:<group ID>`.",
   )
   .openapi("Principal", {
+    not: { const: `user:${MEMBER}` },
     description:
       "`user:<user ID>`, `group:<group ID>`, or `project` for every member of the key's project. End users, guests and service users are never in `project`. There is no entry for everyone, and none that denies.",
     example: "group:api:finance",
@@ -385,8 +409,27 @@ const page = z.strictObject({
     .string()
     .regex(/^[1-9][0-9]?$|^100$/)
     .default("50")
-    .openapi({ description: "1 to 100, written in plain digits. 50 when left out." }),
+    // A query parameter is text, so the parse takes plain digits alone, and an SDK sends a whole
+    // number.
+    .openapi({
+      type: "integer",
+      minimum: 1,
+      maximum: 100,
+      default: 50,
+      description: "1 to 100, written in plain digits. 50 when left out.",
+    }),
 });
+
+/**
+ * A link as a request may send one: `http` or `https`, visible ASCII alone, and no user or
+ * password before the host (no `@` there, and no `\\`, which a browser reads as `/`). The parse
+ * checks it with a URL parser too.
+ */
+const URL_TEXT =
+  /^https?:\/\/[\x21\x22\x24-\x2e\x30-\x3e\x41-\x5b\x5d-\x7e]+(?:[/?#][\x21-\x7e]*)?$/;
+
+/** The URL parser's check of a link, asked after URL_TEXT and never used to change the text. */
+const LINK = z.url({ protocol: /^https?$/ });
 
 /** A memory space and the audience a write in it gets when it names none. */
 export const Space = z
@@ -436,14 +479,22 @@ export const Source = z
         "The item's ID at the source. Writing the same source ID again with the same content changes nothing. Content is compared as it is kept, with credentials such as API keys hidden, so text that differs only in one counts as the same. With other content, it is refused with `conflict` until replacing an item is served. Once its memory is forgotten, the same content sent again changes nothing while the forget can be undone, and is then refused with `conflict`. Each author's source IDs are their own. The ID is kept after its memory is forgotten, so it must not hold content: use the source's own ID, not a title or a sentence.",
       example: "ticket-1042",
     }),
+    // URL_TEXT is checked on the text as sent: z.url() trims it and drops tabs and line breaks
+    // before its own checks, so it alone would take a link the document refuses.
     url: z
-      .url({ protocol: /^https?$/ })
+      .string()
       .max(2048)
+      .regex(
+        URL_TEXT,
+        "A link is http or https, with no space, control character, user or password.",
+      )
+      .refine((text) => LINK.safeParse(text).success, "A link is an http or https URL.")
+      .openapi({ format: "uri" })
       .nullable()
       .default(null)
       .openapi({
         description:
-          "A link to the item at the source: `http` or `https` only. Not kept yet: a value other than null is refused.",
+          "A link to the item at the source: `http` or `https` only, in visible ASCII, with no user or password. Not kept yet: a value other than null is refused.",
       }),
   })
   .openapi("Source");
@@ -656,14 +707,9 @@ export type GroupList = z.infer<typeof GroupList>;
 /** An end user to erase. A member is removed in the console instead (stage-3-alpha D7). */
 export const EraseUser = z
   .strictObject({
-    user_id: z
-      .string()
-      .min(1)
-      .max(256)
-      .regex(/^(?!metaphor:)[!#-[\]-~]+$/, "A member is removed in the console, not erased here.")
-      .openapi({
-        description: "An end user's ID. A member's, which starts with `metaphor:`, is refused.",
-      }),
+    user_id: endUserId("A member is removed in the console, not erased here.").openapi({
+      description: "An end user's ID. A member's, which starts with `metaphor:`, is refused.",
+    }),
   })
   .openapi("EraseUser");
 export type EraseUser = z.infer<typeof EraseUser>;
@@ -672,8 +718,13 @@ const spaceParams = z.object({ space_id: SpaceId });
 const sharedSpaceParams = z.object({
   space_id: z
     .string()
-    .regex(/^(?!personal$)[a-z0-9][a-z0-9-]{0,62}$/)
-    .openapi({ description: "A shared space's name. `personal` is not one.", example: "support" }),
+    .regex(NAME)
+    .refine((name) => name !== "personal", "`personal` is not a shared space.")
+    .openapi({
+      not: { const: "personal" },
+      description: "A shared space's name. `personal` is not one.",
+      example: "support",
+    }),
 });
 
 /** The answers every space route can give, beyond those of any keyed route. */

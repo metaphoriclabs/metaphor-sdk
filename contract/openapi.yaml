@@ -185,8 +185,11 @@ components:
             - "null"
           minLength: 1
           maxLength: 256
-          pattern: ^(?!metaphor:)[!#-[\]-~]+$
+          pattern: ^[!#-[\]-~]+$
           default: null
+          not:
+            type: string
+            pattern: "^metaphor:"
           description: 'The one end user the key may act for: your own ID, 1 to 256
             visible ASCII characters but `"` and `\`, not starting with
             `metaphor:`. Null for a key of your own server.'
@@ -325,16 +328,20 @@ components:
             - "null"
           maxLength: 2048
           format: uri
+          pattern: ^https?:\/\/[\x21\x22\x24-\x2e\x30-\x3e\x41-\x5b\x5d-\x7e]+(?:[/?#][\x21-\x7e]*)?$
           default: null
-          description: "A link to the item at the source: `http` or `https` only. Not kept
-            yet: a value other than null is refused."
+          description: "A link to the item at the source: `http` or `https` only, in
+            visible ASCII, with no user or password. Not kept yet: a value other
+            than null is refused."
       required:
         - name
         - id
       additionalProperties: false
     Principal:
       type: string
-      pattern: ^(?:project|user:(?!metaphor:$)[!#-[\]-~]{1,256}|group:(?:api|console|slack|google|github):[A-Za-z0-9._-]{1,128})$
+      pattern: ^(?:project|user:[!#-[\]-~]{1,256}|group:(?:api|console|slack|google|github):[A-Za-z0-9._-]{1,128})$
+      not:
+        const: "user:metaphor:"
       description: "`user:<user ID>`, `group:<group ID>`, or `project` for every
         member of the key's project. End users, guests and service users are
         never in `project`. There is no entry for everyone, and none that
