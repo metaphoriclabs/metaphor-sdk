@@ -567,7 +567,12 @@ export const ForgetRequest = z
         description: "In the user's own words, such as `my phone number`.",
       }),
     }),
-    z.strictObject({ memory_ids: z.array(MemoryId).min(1).max(100) }),
+    z.strictObject({
+      memory_ids: z.array(MemoryId).min(1).max(100).openapi({
+        description:
+          "The memories to forget. An ID that names no memory the acting user can forget is passed over without an error, and the answer reads the same.",
+      }),
+    }),
     z.strictObject({
       source: Source.pick({ name: true, id: true }),
       author: UserId.optional(),
@@ -576,7 +581,7 @@ export const ForgetRequest = z
   ])
   .openapi("ForgetRequest", {
     description:
-      "One of: `what`, in the user's words; `memory_ids`; `source`, every version of one item, with `author` when another user wrote it; or `author`, everything one user wrote in the space.",
+      "One of: `what`, in the user's words; `memory_ids`; `source`, every version of one item, with `author` when another user wrote it; or `author`, everything one user wrote in the space. Served today: `memory_ids`, and `source` without `author`, in the `personal` space. The others are refused with `invalid-request` until they are served.",
   });
 export type ForgetRequest = z.infer<typeof ForgetRequest>;
 
@@ -594,7 +599,7 @@ export const Forget = z
     id: ForgetId,
     state: z.string().openapi({
       description:
-        "`open`: gone from recall, and can be undone until `undo_until`. `undone`: brought back. `closed`: the undo window has closed and nothing of it can be read. `erased`: every key that could open a copy of it is destroyed too.",
+        "Where what this forget took stands. `open`: gone from recall, and can be undone until `undo_until`. `undone`: brought back. `closed`: the undo window has closed and nothing of it can be read. `erased`: every key that could open a copy of it is destroyed too.",
     }),
     undo_until: Time.nullable(),
     erased_at: Time.nullable().openapi({
@@ -833,14 +838,30 @@ export const recallRoute = createRoute({
   },
 });
 
+/** The header that makes a forget sent again the same forget. */
+export const IDEMPOTENCY_KEY_HEADER = "idempotency-key";
+
+const forgetHeaders = actingUser.extend({
+  [IDEMPOTENCY_KEY_HEADER]: z
+    .string()
+    .regex(/^[\x21-\x7e]{1,255}$/)
+    .optional()
+    .openapi({
+      param: {
+        description:
+          "1 to 255 visible ASCII characters, such as a UUID. A forget sent again in the same space with the same key and the same memories is the same forget: it takes nothing more and answers where the first one stands now, under its ID, for as long as the space is kept. The same key with other memories is another forget. Without it, each forget sent is a new one, so a forget sent again after its answer was lost has another ID, and only the first can undo what was taken.",
+      },
+    }),
+});
+
 export const forgetRoute = createRoute({
   method: "post",
   path: "/v1/spaces/{space_id}/forget",
   summary: "Forget",
-  description: `Needs \`memories:forget\`, which reaches only what the acting user wrote. \`memories:forget-others\` reaches what others wrote too, by \`memory_ids\`, \`source\` or \`author\`, whether or not the acting user can see it; each such forget is recorded and shown to the author. \`what\` always reaches only the acting user's own writing. What a forget reaches leaves recall at once, with every memory made from it, and can be brought back until the undo window closes. It answers the same whether or not anything matched. The body may be up to ${BODY_LIMITS.forget.toLocaleString("en")} bytes.`,
+  description: `Needs \`memories:forget\`, which reaches only what the acting user wrote. \`memories:forget-others\` reaches what others wrote too, by \`memory_ids\`, \`source\` or \`author\`, whether or not the acting user can see it; each such forget is recorded and shown to the author. \`what\` always reaches only the acting user's own writing. What a forget reaches leaves recall at once, with every memory made from it, and can be brought back until the undo window closes. It answers the same whether or not anything matched. A forget by \`memory_ids\` or \`source\` takes the memories named and what was made from them, and nothing else: the same number or fact in another memory stays until that memory is forgotten too, as does the reply to a forgotten message unless it is named too. A memory another forget has already taken is passed over: if that forget is undone, the memory comes back, and this one does not hold it. The body may be up to ${BODY_LIMITS.forget.toLocaleString("en")} bytes.`,
   security,
   request: {
-    headers: actingUser,
+    headers: forgetHeaders,
     params: spaceParams,
     body: { required: true, content: { "application/json": { schema: ForgetRequest } } },
   },
@@ -852,6 +873,9 @@ export const forgetRoute = createRoute({
     ...acting,
     413: tooLarge(BODY_LIMITS.forget),
     415: json,
+    503: refused(
+      "The request could not be checked, or the tenant is not set up for this space yet. Try again later.",
+    ),
   },
 });
 
@@ -871,6 +895,7 @@ export const getForgetRoute = createRoute({
     },
     ...acting,
     404: refused("No such forget, or no such shared space."),
+    503: refused("The request could not be checked. Try again later."),
   },
 });
 
@@ -879,7 +904,7 @@ export const undoForgetRoute = createRoute({
   path: "/v1/spaces/{space_id}/forgets/{forget_id}/undo",
   summary: "Undo a forget",
   description:
-    "Needs the scope the forget needed. Only the user who asked for a forget can undo it. Brings back what the forget took while its undo window is open. After that it changes nothing and answers where the forget stands.",
+    "Needs the scope the forget needed. Only the user who asked for a forget can undo it. Brings back what this forget took while its undo window is open, and nothing another forget took. A message held aside because it said a number a forget asked not to learn again is not brought back by this undo: the answer covers this forget alone. After that it changes nothing and answers where the forget stands.",
   security,
   request: { headers: actingUser, params: forgetParams },
   responses: {
@@ -889,6 +914,7 @@ export const undoForgetRoute = createRoute({
     },
     ...acting,
     404: refused("No such forget, or no such shared space."),
+    503: refused("The request could not be checked. Try again later."),
   },
 });
 
@@ -988,6 +1014,9 @@ export const routes = [
   revokeApiKeyRoute,
   writeMemoryRoute,
   recallRoute,
+  forgetRoute,
+  getForgetRoute,
+  undoForgetRoute,
 ];
 
 /**
@@ -1000,9 +1029,6 @@ export const draftRoutes = [
   deleteSpaceRoute,
   listMemoriesRoute,
   getMemoryRoute,
-  forgetRoute,
-  getForgetRoute,
-  undoForgetRoute,
   listGroupsRoute,
   putGroupRoute,
   deleteGroupRoute,

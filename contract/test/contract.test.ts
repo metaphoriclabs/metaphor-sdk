@@ -1,3 +1,4 @@
+import type { RouteConfig } from "@hono/zod-openapi";
 import { describe, expect, it } from "vitest";
 import {
   ACTING_USER_HEADER,
@@ -24,9 +25,15 @@ import {
 } from "../src/index.ts";
 
 const draft = openApiDocument([...routes, ...draftRoutes]);
+/** Every route, served or not: a rule for routes holds for both. */
+const everyRoute: readonly RouteConfig[] = [...routes, ...draftRoutes];
+/** The draft routes and the space routes served from them. The key routes came before. */
+const drafts: ReadonlySet<RouteConfig> = new Set(draftRoutes);
+const v0Routes = everyRoute.filter(
+  (route) => drafts.has(route) || route.path.startsWith("/v1/spaces"),
+);
 const draftPaths = draft.paths ?? {};
-const operation = (route: (typeof draftRoutes)[number]) =>
-  draftPaths[route.path]?.[route.method as "get"];
+const operation = (route: RouteConfig) => draftPaths[route.path]?.[route.method as "get"];
 
 describe("contract v0 drafts", () => {
   it("builds one document with the served routes", () => {
@@ -41,7 +48,7 @@ describe("contract v0 drafts", () => {
   });
 
   it("asks every space route who it acts for, and no other route", () => {
-    for (const route of draftRoutes) {
+    for (const route of everyRoute) {
       const names = (operation(route)?.parameters ?? []).map((p) =>
         "name" in p ? p.name : undefined,
       );
@@ -51,7 +58,7 @@ describe("contract v0 drafts", () => {
   });
 
   it("takes no query parameter but paging and the agent filter", () => {
-    for (const route of draftRoutes) {
+    for (const route of everyRoute) {
       const names = (operation(route)?.parameters ?? [])
         .filter((p) => "in" in p && p.in === "query")
         .map((p) => ("name" in p ? p.name : ""));
@@ -60,7 +67,7 @@ describe("contract v0 drafts", () => {
   });
 
   it("puts no user ID in a path or a query", () => {
-    for (const route of draftRoutes) {
+    for (const route of everyRoute) {
       expect(route.path).not.toMatch(/{user/);
       const outside = (operation(route)?.parameters ?? []).filter(
         (p) => "in" in p && (p.in === "path" || p.in === "query"),
@@ -70,7 +77,7 @@ describe("contract v0 drafts", () => {
   });
 
   it("states the body limit of every route that takes a body", () => {
-    for (const route of draftRoutes.filter((r) => r.request && "body" in r.request)) {
+    for (const route of v0Routes.filter((r) => r.request && "body" in r.request)) {
       expect(route.description, route.path).toMatch(/The body may be up to [\d,]+ bytes\./);
       expect(Object.keys(route.responses), route.path).toContain("413");
     }
@@ -90,7 +97,7 @@ describe("contract v0 drafts", () => {
         }
       }
     };
-    for (const route of draftRoutes) follow(operation(route)?.responses ?? {});
+    for (const route of v0Routes) follow(operation(route)?.responses ?? {});
     expect(seen).toContain("Memory");
   });
 
@@ -352,7 +359,7 @@ describe("answers about others", () => {
   });
 
   it("let only the user who asked undo a forget", () => {
-    const undo = draftRoutes.find((route) => route.path.endsWith("/undo"));
+    const undo = everyRoute.find((route) => route.path.endsWith("/undo"));
     expect(undo?.description).toMatch(/Only the user who asked for a forget can undo it\./);
   });
 });
