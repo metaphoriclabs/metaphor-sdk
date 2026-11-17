@@ -19,6 +19,7 @@ components:
         - forbidden
         - not-found
         - key-limit
+        - conflict
         - too-large
         - unsupported-media-type
         - rate-limited
@@ -39,6 +40,9 @@ components:
 
         - `key-limit` (409): the tenant or the user holds as many working keys
         as it may.
+
+        - `conflict` (409): the request disagrees with what is kept, such as a
+        source ID already used.
 
         - `too-large` (413): the request body is too large.
 
@@ -206,6 +210,136 @@ components:
             $ref: "#/components/schemas/ApiKey"
       required:
         - data
+    WrittenMemory:
+      type: object
+      properties:
+        id:
+          type: string
+          pattern: ^[0-9a-f]{32}$
+          description: A memory's ID, made from its source. The same source gives the same
+            ID in every space, so an ID names a memory only within its space.
+          example: 4f1c9a7e2b8d06c3a5e9f17b20d4c8e6
+        status:
+          type: string
+          description: "`accepted` today."
+      required:
+        - id
+        - status
+    SpaceId:
+      type: string
+      pattern: ^[a-z0-9][a-z0-9-]{0,62}$
+      description: "`personal` for the acting user's own space, or a shared space's
+        ID: 1 to 63 lowercase letters, digits and hyphens, starting with a
+        letter or digit. `personal` always answers: before the user's first
+        write it holds nothing."
+      example: personal
+    UserId:
+      type: string
+      minLength: 1
+      maxLength: 256
+      pattern: ^[!#-[\]-~]+$
+      description: "A member's ID, which Metaphor issued and which starts with
+        `metaphor:`, or your own ID for an end user: 1 to 256 visible ASCII
+        characters but `\"` and `\\`, not starting with `metaphor:`. Metaphor
+        keeps an end user's ID as you send it only on a key held to that user. A
+        service user's ID is issued by Metaphor, so it starts with `metaphor:`
+        too."
+      example: customer-4821
+    WriteMemory:
+      type: object
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 32000
+          pattern: \S
+          description: "What to remember: up to 32,000 characters, not all of them white
+            space. It is never written to a log."
+        source:
+          $ref: "#/components/schemas/Source"
+        occurred_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+          default: null
+          example: 2027-01-31T09:30:00Z
+          description: "When it happened, which may be long before it is sent. Null means
+            now. Not kept yet: a value other than null is refused."
+        audience:
+          type:
+            - array
+            - "null"
+          items:
+            $ref: "#/components/schemas/Principal"
+          minItems: 1
+          maxItems: 100
+          default: null
+          uniqueItems: true
+          description: "Who may see it. Null takes the space's default: in a personal
+            space, its user alone. A user may name themselves, groups they are
+            in, and `project` when they are a member."
+          example:
+            - user:customer-4821
+        agent:
+          type:
+            - string
+            - "null"
+          pattern: ^[a-z0-9][a-z0-9-]{0,62}$
+          default: null
+          description: "The agent writing it for the acting user, if one is, such as
+            `claude-code`. Not kept yet: a value other than null is refused."
+          example: claude-code
+      required:
+        - content
+        - source
+      additionalProperties: false
+    Source:
+      type: object
+      properties:
+        name:
+          type: string
+          pattern: ^[a-z0-9][a-z0-9-]{0,31}$
+          description: "The source: `api`, `slack`, `gmail`, `claude-code` or another name
+            of yours."
+          example: api
+        id:
+          type: string
+          minLength: 1
+          maxLength: 256
+          pattern: ^[!#-[\]-~]+$
+          description: "The item's ID at the source. Writing the same source ID again with
+            the same content changes nothing. Content is compared as it is kept,
+            with credentials such as API keys hidden, so text that differs only
+            in one counts as the same. With other content, it is refused with
+            `conflict` until replacing an item is served. Once its memory is
+            forgotten, the same content sent again changes nothing while the
+            forget can be undone, and is then refused with `conflict`. Each
+            author's source IDs are their own. The ID is kept after its memory
+            is forgotten, so it must not hold content: use the source's own ID,
+            not a title or a sentence."
+          example: ticket-1042
+        url:
+          type:
+            - string
+            - "null"
+          maxLength: 2048
+          format: uri
+          default: null
+          description: "A link to the item at the source: `http` or `https` only. Not kept
+            yet: a value other than null is refused."
+      required:
+        - name
+        - id
+      additionalProperties: false
+    Principal:
+      type: string
+      pattern: ^(?:project|user:(?!metaphor:$)[!#-[\]-~]{1,256}|group:(?:api|console|slack|google|github):[A-Za-z0-9._-]{1,128})$
+      description: "`user:<user ID>`, `group:<group ID>`, or `project` for every
+        member of the key's project. End users, guests and service users are
+        never in `project`. There is no entry for everyone, and none that
+        denies."
+      example: group:api:finance
   parameters: {}
 paths:
   /health:
@@ -393,6 +527,111 @@ paths:
                 $ref: "#/components/schemas/Error"
         "503":
           description: The request could not be checked. Try again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /v1/spaces/{space_id}/memories:
+    post:
+      summary: Write a memory
+      description: Needs `memories:write`. Answers once the memory is kept, before it
+        is ready for recall. The acting user is its author. An audience naming a
+        group that does not exist and one naming a group the user is not in are
+        refused the same. The body may be up to 524,288 bytes.
+      security: *a1
+      parameters:
+        - schema:
+            $ref: "#/components/schemas/SpaceId"
+          required: true
+          description: "`personal` for the acting user's own space, or a shared space's
+            ID: 1 to 63 lowercase letters, digits and hyphens, starting with a
+            letter or digit. `personal` always answers: before the user's first
+            write it holds nothing."
+          name: space_id
+          in: path
+        - schema:
+            $ref: "#/components/schemas/UserId"
+          required: false
+          description: The user this request acts for. Required for a key of your own
+            server; a key held to a user may leave it out, or send that user's
+            ID. A server key acts for a member only where the owner turned that
+            on for the project, and each such request is recorded.
+          name: metaphor-user
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WriteMemory"
+      responses:
+        "202":
+          description: The memory is kept. The same source and content sent again changes
+            nothing, and a memory forgotten since stays forgotten.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WrittenMemory"
+        "400":
+          description: The request is not valid, or names no user to act for.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: No valid API key was sent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The API key does not allow this, or not for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such shared space.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The source ID is already used, by other content or by a memory
+            forgotten past undoing. Replacing an item is not served yet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "413":
+          description: The request body is longer than 524,288 bytes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "415":
+          description: The body was not sent as `application/json`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: The API key sent more than 600 requests in a minute, the user's
+            keys together more than 2000, or the tenant's keys together more
+            than 6000. Wait the seconds `Retry-After` gives.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Something went wrong. Try again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: The request could not be checked, or the tenant is not set up to
+            take memories yet. Try again later.
           content:
             application/json:
               schema:

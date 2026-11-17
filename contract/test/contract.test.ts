@@ -170,6 +170,18 @@ describe("WriteMemory", () => {
     expect(WriteMemory.safeParse({ ...write, project_id: "p2" }).success).toBe(false);
     expect(WriteMemory.safeParse({ ...write, author: "metaphor:ceo" }).success).toBe(false);
   });
+
+  it("counts content in characters, as the space does: 32,000 emoji and no more", () => {
+    // Each is two UTF-16 units: a count of units would refuse what the space keeps.
+    const takes = (content: string) => WriteMemory.safeParse({ ...write, content }).success;
+    expect(takes("🚲".repeat(32_000))).toBe(true);
+    expect(takes("🚲".repeat(32_001))).toBe(false);
+  });
+
+  it.each(["", " ", "   ", "\n\t", "\u00a0\u2028\ufeff"])(
+    "refuses content of white space alone: %j",
+    (content) => expect(WriteMemory.safeParse({ ...write, content }).success).toBe(false),
+  );
 });
 
 describe("ForgetRequest", () => {

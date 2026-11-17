@@ -22,6 +22,7 @@ const ERROR_CODES = [
   "forbidden",
   "not-found",
   "key-limit",
+  "conflict",
   "too-large",
   "unsupported-media-type",
   "rate-limited",
@@ -40,6 +41,7 @@ export const ERROR_STATUS = {
   forbidden: 403,
   "not-found": 404,
   "key-limit": 409,
+  conflict: 409,
   "too-large": 413,
   "unsupported-media-type": 415,
   "rate-limited": 429,
@@ -57,6 +59,7 @@ export const ErrorCode = z.enum(ERROR_CODES).openapi("ErrorCode", {
     "- `forbidden` (403): the API key does not allow this.",
     "- `not-found` (404): no such route, or no such thing at it.",
     "- `key-limit` (409): the tenant or the user holds as many working keys as it may.",
+    "- `conflict` (409): the request disagrees with what is kept, such as a source ID already used.",
     "- `too-large` (413): the request body is too large.",
     "- `unsupported-media-type` (415): the body was not sent as `application/json`.",
     "- `rate-limited` (429): too many requests. Wait the seconds `Retry-After` gives.",
@@ -233,9 +236,6 @@ export const revokeApiKeyRoute = createRoute({
     404: refused("No such key."),
   },
 });
-
-/** Every public route. The API implements each one and openapi.yaml documents them. */
-export const routes = [healthRoute, createApiKeyRoute, listApiKeysRoute, revokeApiKeyRoute];
 
 // Contract v0: spaces, memories, recall, forget, groups and the erasure of a user.
 //
@@ -433,7 +433,7 @@ export const Source = z
       }),
     id: z.string().min(1).max(256).regex(PLAIN).openapi({
       description:
-        "The item's ID at the source. Writing the same source ID again replaces the item's earlier version, or changes nothing when the content is the same. Each author's source IDs are their own.",
+        "The item's ID at the source. Writing the same source ID again with the same content changes nothing. Content is compared as it is kept, with credentials such as API keys hidden, so text that differs only in one counts as the same. With other content, it is refused with `conflict` until replacing an item is served. Once its memory is forgotten, the same content sent again changes nothing while the forget can be undone, and is then refused with `conflict`. Each author's source IDs are their own. The ID is kept after its memory is forgotten, so it must not hold content: use the source's own ID, not a title or a sentence.",
       example: "ticket-1042",
     }),
     url: z
@@ -441,7 +441,10 @@ export const Source = z
       .max(2048)
       .nullable()
       .default(null)
-      .openapi({ description: "A link to the item at the source: `http` or `https` only." }),
+      .openapi({
+        description:
+          "A link to the item at the source: `http` or `https` only. Not kept yet: a value other than null is refused.",
+      }),
   })
   .openapi("Source");
 export type Source = z.input<typeof Source>;
@@ -449,24 +452,31 @@ export type Source = z.input<typeof Source>;
 const MemoryId = z
   .string()
   .regex(/^[0-9a-f]{32}$/)
-  .openapi({ example: "4f1c9a7e2b8d06c3a5e9f17b20d4c8e6" });
+  .openapi({
+    description:
+      "A memory's ID, made from its source. The same source gives the same ID in every space, so an ID names a memory only within its space.",
+    example: "4f1c9a7e2b8d06c3a5e9f17b20d4c8e6",
+  });
 
 /** A memory to keep, with where it came from and who may see it. */
 export const WriteMemory = z
   .strictObject({
-    content: z.string().min(1).max(32_000).openapi({
-      description: "What to remember: up to 32,000 characters. It is never written to a log.",
+    content: z.string().min(1).max(32_000).regex(/\S/).openapi({
+      description:
+        "What to remember: up to 32,000 characters, not all of them white space. It is never written to a log.",
     }),
     source: Source,
     occurred_at: Time.nullable().default(null).openapi({
-      description: "When it happened, which may be long before it is sent. Null means now.",
+      description:
+        "When it happened, which may be long before it is sent. Null means now. Not kept yet: a value other than null is refused.",
     }),
     audience: Audience.nullable().default(null).openapi({
       description:
         "Who may see it. Null takes the space's default: in a personal space, its user alone. A user may name themselves, groups they are in, and `project` when they are a member.",
     }),
     agent: z.string().regex(NAME).nullable().default(null).openapi({
-      description: "The agent writing it for the acting user, if one is, such as `claude-code`.",
+      description:
+        "The agent writing it for the acting user, if one is, such as `claude-code`. Not kept yet: a value other than null is refused.",
       example: "claude-code",
     }),
   })
@@ -745,12 +755,19 @@ export const writeMemoryRoute = createRoute({
   },
   responses: {
     202: {
-      description: "The memory is kept.",
+      description:
+        "The memory is kept. The same source and content sent again changes nothing, and a memory forgotten since stays forgotten.",
       content: { "application/json": { schema: WrittenMemory } },
     },
     ...acting,
+    409: refused(
+      "The source ID is already used, by other content or by a memory forgotten past undoing. Replacing an item is not served yet.",
+    ),
     413: tooLarge(BODY_LIMITS.writeMemory),
     415: json,
+    503: refused(
+      "The request could not be checked, or the tenant is not set up to take memories yet. Try again later.",
+    ),
   },
 });
 
@@ -959,6 +976,15 @@ export const eraseUserRoute = createRoute({
   },
 });
 
+/** Every public route. The API implements each one and openapi.yaml documents them. */
+export const routes = [
+  healthRoute,
+  createApiKeyRoute,
+  listApiKeysRoute,
+  revokeApiKeyRoute,
+  writeMemoryRoute,
+];
+
 /**
  * The routes of contract v0 that the API does not serve yet. A key works in one project, so
  * no route names one: a key made before projects works in its business's default project.
@@ -967,7 +993,6 @@ export const draftRoutes = [
   listSpacesRoute,
   putSpaceRoute,
   deleteSpaceRoute,
-  writeMemoryRoute,
   listMemoriesRoute,
   getMemoryRoute,
   recallRoute,
