@@ -20,9 +20,11 @@ components:
         - not-found
         - key-limit
         - conflict
+        - forget-undone
         - too-large
         - unsupported-media-type
         - rate-limited
+        - open-forgets
         - internal
         - unavailable
       description: >-
@@ -44,6 +46,9 @@ components:
         - `conflict` (409): the request disagrees with what is kept, such as a
         source ID already used.
 
+        - `forget-undone` (409): a forget sent again under an `Idempotency-Key`
+        whose forget was undone. Nothing was taken.
+
         - `too-large` (413): the request body is too large.
 
         - `unsupported-media-type` (415): the body was not sent as
@@ -52,12 +57,20 @@ components:
         - `rate-limited` (429): too many requests. Wait the seconds
         `Retry-After` gives.
 
+        - `open-forgets` (429): the space holds 5,000 forgets open. `frees_at`
+        says when the earliest one's undo window ends, at most 30 days away.
+        Undoing a forget frees a place at once.
+
         - `internal` (500): something went wrong. Try again.
 
         - `unavailable` (503): the request could not be checked. Try again.
 
 
         New codes may be added. Treat one you do not know by its status.
+
+
+        An SDK never sleeps on `Retry-After` for longer than 60 seconds. Past
+        that, it returns the error with the time it may try again.
     Health:
       type: object
       properties:
@@ -444,6 +457,30 @@ components:
         - state
         - undo_until
         - erased_at
+    ForgetUndoneError:
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
+          properties:
+            forget:
+              allOf:
+                - $ref: "#/components/schemas/Forget"
+                - description: The forget the key was first sent with, which was undone.
+          required:
+            - forget
+    OpenForgetsError:
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
+          properties:
+            frees_at:
+              type: string
+              format: date-time
+              example: 2027-01-31T09:30:00Z
+              description: When the earliest open forget's undo window ends, which frees a
+                place. Undoing a forget frees one at once.
+          required:
+            - frees_at
     ForgetRequest:
       anyOf:
         - type: object
@@ -932,8 +969,16 @@ paths:
         number or fact in another memory stays until that memory is forgotten
         too, as does the reply to a forgotten message unless it is named too. A
         memory another forget has already taken is passed over: if that forget
-        is undone, the memory comes back, and this one does not hold it. The
-        body may be up to 16,384 bytes."
+        is undone, the memory comes back, and this one does not hold it. A space
+        holds at most 5,000 forgets open at once, counting forgets that matched
+        nothing: a forget past that answers 429 `open-forgets` and changes
+        nothing, for at most 30 days, until the earliest open forget's undo
+        window ends. `frees_at` gives that time. Undoing a forget frees a place
+        at once. A forget sent again under an `Idempotency-Key` already honoured
+        is answered as before and is not counted. One whose forget was undone
+        answers 409 `forget-undone` with that forget, and takes nothing. Reading
+        or undoing a forget is never refused for it. The body may be up to
+        16,384 bytes."
       security: *a1
       parameters:
         - schema:
@@ -961,11 +1006,12 @@ paths:
           description: "1 to 255 visible ASCII characters, such as a UUID. A forget sent
             again in the same space with the same key and the same memories is
             the same forget: it takes nothing more and answers where the first
-            one stands now, under its ID, for as long as the space is kept. The
-            same key with other memories is another forget. Without it, each
-            forget sent is a new one, so a forget sent again after its answer
-            was lost has another ID, and only the first can undo what was
-            taken."
+            one stands now, under its ID, for as long as the space is kept. If
+            that forget was undone, it answers 409 `forget-undone` and takes
+            nothing: send a new key to forget again. The same key with other
+            memories is another forget. Without it, each forget sent is a new
+            one, so a forget sent again after its answer was lost has another
+            ID, and only the first can undo what was taken."
           name: idempotency-key
           in: header
       requestBody:
@@ -1005,6 +1051,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "409":
+          description: The forget was sent again under an `Idempotency-Key` whose forget
+            was undone. Nothing was taken. `forget` is that forget. Send a new
+            key to forget again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForgetUndoneError"
         "413":
           description: The request body is longer than 16,384 bytes.
           content:
@@ -1018,13 +1072,17 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "429":
-          description: The API key sent more than 600 requests in a minute, the user's
-            keys together more than 2000, or the tenant's keys together more
-            than 6000. Wait the seconds `Retry-After` gives.
+          description: "`rate-limited`: the API key sent more than 600 requests in a
+            minute, the user's keys together more than 2000, or the tenant's
+            keys together more than 6000. Wait the seconds `Retry-After` gives.
+            `open-forgets`: the space holds 5,000 forgets open, and `frees_at`
+            says when a place frees. It sends no `Retry-After`."
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                anyOf:
+                  - $ref: "#/components/schemas/OpenForgetsError"
+                  - $ref: "#/components/schemas/Error"
         "500":
           description: Something went wrong. Try again.
           content:
