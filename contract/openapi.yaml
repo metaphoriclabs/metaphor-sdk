@@ -181,7 +181,11 @@ components:
             - "null"
           minLength: 1
           maxLength: 256
+          pattern: ^(?!metaphor:)[!#-[\]-~]+$
           default: null
+          description: 'The one end user the key may act for: your own ID, 1 to 256
+            visible ASCII characters but `"` and `\`, not starting with
+            `metaphor:`. Null for a key of your own server.'
         expires_at:
           type:
             - string

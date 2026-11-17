@@ -3,6 +3,7 @@ import {
   ACTING_USER_HEADER,
   Audience,
   BODY_LIMITS,
+  CreateApiKey,
   deleteSpaceRoute,
   draftRoutes,
   EraseUser,
@@ -195,6 +196,22 @@ describe("EraseUser", () => {
   });
 });
 
+describe("CreateApiKey", () => {
+  const key = (user_id: unknown) =>
+    CreateApiKey.safeParse({ name: "n", scopes: ["memories:read"], user_id }).success;
+
+  it("holds a key to an end user or to no one user", () => {
+    expect(key("customer-4821")).toBe(true);
+    expect(key(null)).toBe(true);
+  });
+
+  it("refuses a member's ID, and what the header cannot carry as sent", () => {
+    for (const id of ["metaphor:", "metaphor:u1", 'a"b', "a\\b", "a b", "é", ""]) {
+      expect(key(id)).toBe(false);
+    }
+  });
+});
+
 describe("request limits", () => {
   // The most bytes a client could send for a body the schema accepts: some encoders write every
   // character past ASCII as \uXXXX (Python, PHP) and "/" as "\/" (PHP).
@@ -303,6 +320,16 @@ describe("the published document", () => {
     const source = /"pattern":"((?:[^"\\]|\\.)*)"/.exec(erase)?.[1] ?? "";
     const rule = new RegExp(JSON.parse(`"${source}"`));
     expect(rule.test("metaphor:u1")).toBe(false);
+    expect(rule.test("customer-4821")).toBe(true);
+  });
+
+  it("refuses a member's ID on a key", () => {
+    // Served now, so the rule must be in the document generated from served routes.
+    const create = JSON.stringify(openApiDocument(routes).components?.schemas?.CreateApiKey);
+    const source = /"pattern":"((?:[^"\\]|\\.)*)"/.exec(create)?.[1] ?? "";
+    const rule = new RegExp(JSON.parse(`"${source}"`));
+    expect(rule.test("metaphor:u1")).toBe(false);
+    expect(rule.test('a"b')).toBe(false);
     expect(rule.test("customer-4821")).toBe(true);
   });
 });

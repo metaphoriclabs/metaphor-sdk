@@ -155,7 +155,17 @@ export const CreateApiKey = z
       description: "Your label for the key: 1 to 64 visible characters, single spaces between.",
     }),
     scopes: z.array(Scope).min(1).max(Scope.options.length),
-    user_id: z.string().min(1).max(256).nullable().default(null),
+    user_id: z
+      .string()
+      .min(1)
+      .max(256)
+      .regex(/^(?!metaphor:)[!#-[\]-~]+$/, "A key is held to an end user, never to a member.")
+      .nullable()
+      .default(null)
+      .openapi({
+        description:
+          'The one end user the key may act for: your own ID, 1 to 256 visible ASCII characters but `"` and `\\`, not starting with `metaphor:`. Null for a key of your own server.',
+      }),
     expires_at: Time.nullable().default(null),
   })
   .openapi("CreateApiKey");
