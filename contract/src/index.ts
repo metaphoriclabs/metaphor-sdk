@@ -121,10 +121,17 @@ const keyed = {
 /** Every route but `/health` needs an API key, sent as `Authorization: Bearer <key>`. */
 const security = [{ apiKey: [] }];
 
-/** What an API key may do. There is no scope that stands for all of them. */
+/**
+ * What an API key may do. There is no scope that stands for all of them. `users:erase` names
+ * the erase of an end user, whose route is not yet served: a key may carry it and reaches
+ * nothing with it until then.
+ */
 export const Scope = z
-  .enum(["memories:read", "memories:write", "memories:forget", "keys:manage"])
-  .openapi("Scope");
+  .enum(["memories:read", "memories:write", "memories:forget", "keys:manage", "users:erase"])
+  .openapi("Scope", {
+    description:
+      "What an API key may do. There is no scope that stands for all of them. `users:erase` is for erasing an end user, a route not yet served: a key may carry it, and reaches nothing with it until then.",
+  });
 export type Scope = z.infer<typeof Scope>;
 
 /** A time in UTC, as RFC 3339 writes it: `2027-01-31T09:30:00Z`. */
@@ -285,20 +292,14 @@ export const revokeApiKeyRoute = createRoute({
 // today keeps working when one is added.
 
 /**
- * What a key of contract v0 may do: today's scopes and four more. A route that needs one of
- * the four is not served yet; each joins `Scope` when the first route that needs it is.
+ * What a key of contract v0 may do: today's scopes and three more. A route that needs one of
+ * the three is not served yet; each joins `Scope` when the first route that needs it is.
  *
  * A key held to a user can never have `spaces:manage`, `groups:manage` or
  * `memories:forget-others`, and with `users:erase` it can erase only its own user.
  */
 export const ScopeV0 = z
-  .enum([
-    ...Scope.options,
-    "spaces:manage",
-    "groups:manage",
-    "memories:forget-others",
-    "users:erase",
-  ])
+  .enum([...Scope.options, "spaces:manage", "groups:manage", "memories:forget-others"])
   .openapi("ScopeV0");
 export type ScopeV0 = z.infer<typeof ScopeV0>;
 
@@ -378,7 +379,7 @@ export const GroupId = z
   .regex(/^(api|console|slack|google|github):[A-Za-z0-9._-]{1,128}$/)
   .openapi("GroupId", {
     description:
-      "Where the group's members come from, a colon, and its name: `api:` for a group your server keeps, `console:` for a team made in the console, `slack:`, `google:` or `github:` for one mirrored from that source. Answers may hold sources not listed here.",
+      "Where the group's members come from, a colon, and its name: `api:` for a group your server keeps, `console:` for a team made in the console, `slack:`, `google:` or `github:` for one mirrored from that source. Answers may hold sources not listed here. A group ID is kept in history after an erase, so it must not hold personal data, such as a person's name.",
     example: "api:finance",
   });
 export type GroupId = z.infer<typeof GroupId>;
@@ -495,7 +496,7 @@ export const Source = z
       }),
     id: z.string().min(1).max(256).regex(PLAIN).openapi({
       description:
-        "The item's ID at the source. Writing the same source ID again with the same content changes nothing. Content is compared as it is kept, with credentials such as API keys hidden, so text that differs only in one counts as the same. With other content, it is refused with `conflict` until replacing an item is served. Once its memory is forgotten, the same content sent again changes nothing while the forget can be undone, and is then refused with `conflict`. Each author's source IDs are their own. The ID is kept after its memory is forgotten, so it must not hold content: use the source's own ID, not a title or a sentence.",
+        "The item's ID at the source. Writing the same source ID again with the same content changes nothing. Content is compared as it is kept, with credentials such as API keys hidden, so text that differs only in one counts as the same. With other content, it is refused with `conflict` until replacing an item is served. Once its memory is forgotten, the same content sent again changes nothing while the forget can be undone, and is then refused with `conflict`. Each author's source IDs are their own. The ID is kept after its memory is forgotten, and in history after an erase, so it must not hold content or personal data: use the source's own ID, not a title, a sentence or a person's name.",
       example: "ticket-1042",
     }),
     // URL_TEXT is checked on the text as sent: z.url() trims it and drops tabs and line breaks
@@ -695,7 +696,7 @@ export const Erasure = z
   .object({
     erased_at: Time.openapi({
       description:
-        "From the answer, nothing of it can be read. By this time every key that could open a copy of it is destroyed too.",
+        "From the answer, nothing it held can be read. By this time every key that could open a copy of what it held is destroyed too. The route says what else stays, and for how long.",
     }),
   })
   .openapi("Erasure");
@@ -1091,14 +1092,18 @@ export const eraseUserRoute = createRoute({
   method: "post",
   path: "/v1/users/erase",
   summary: "Erase an end user",
-  description: `Needs \`users:erase\`; a key held to a user may erase only that user. Only an end user: a member is removed in the console, where their private memories are hidden at once and erased 30 days later. Erases the user's personal space and everything they wrote in the key's project, takes them out of every group, revokes every key held to them and removes their ID from those keys' records. It cannot be undone, and it answers the same whether or not the user had anything. The ID is sent in the body so it never appears in a URL. The body may be up to ${BODY_LIMITS.eraseUser.toLocaleString("en")} bytes.`,
+  description: `Needs \`users:erase\`; a key held to a user may erase only that user. Only an end user: a member is removed in the console, where their private memories are hidden at once and erased 30 days later. Erases the user's personal space and everything they wrote in the key's project, takes them out of every group, revokes every key held to them and removes their ID from those keys' records. It cannot be undone, and it answers the same whether or not the user had anything. The ID is sent in the body so it never appears in a URL. The body may be up to ${BODY_LIMITS.eraseUser.toLocaleString("en")} bytes.
+
+A request for the user that is in flight when the erase runs may fail, or may land after it: a write let in before the erase can be kept in the new, empty space, as one your server sends after it would be. The erase empties the space; it does not bar it. Stop sending for the user before you erase them, and erase again if a write raced the erase. If the erase answers 5xx, what it did stays done and the user's space reads nothing; send it again to finish it. Their own keys are revoked by then, so send it with a key of your server.
+
+What stays. For 30 days, Cloudflare's point-in-time history keeps two things from before the erase. One is your keys' records, with the user's ID and the names of their keys. The other is the space's log rows, with memory IDs, kinds and times. A memory ID is a hash of the memory's content with no key, so whoever holds that history can confirm a guess at what a memory said. With the key Metaphor holds for your tenant, the same history also opens which memory IDs each forget, hide and restore named and when, the space's key changes, and its settings. None of these holds what a memory said. Only Cloudflare reaches that history, and whoever restores the object from it, which includes Metaphor by shipping code that does so; no code here restores a real space. The name of the user's space, a keyed hash of their ID, is kept for good. If you gave another key a name that holds the user's ID, the name stays: it is live data, not history, so revoke that key to remove it.`,
   security,
   request: {
     body: { required: true, content: { "application/json": { schema: EraseUser } } },
   },
   responses: {
     202: {
-      description: "Nothing of the user can be read.",
+      description: "Nothing the user wrote can be read. The route's description says what stays.",
       content: { "application/json": { schema: Erasure } },
     },
     ...keyed,

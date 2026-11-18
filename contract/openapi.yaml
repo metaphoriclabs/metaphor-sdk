@@ -97,6 +97,10 @@ components:
         - memories:write
         - memories:forget
         - keys:manage
+        - users:erase
+      description: "What an API key may do. There is no scope that stands for all of
+        them. `users:erase` is for erasing an end user, a route not yet served:
+        a key may carry it, and reaches nothing with it until then."
     ApiKey:
       type: object
       properties:
@@ -197,7 +201,7 @@ components:
           items:
             $ref: "#/components/schemas/Scope"
           minItems: 1
-          maxItems: 4
+          maxItems: 5
         user_id:
           type:
             - string
@@ -338,8 +342,9 @@ components:
             forgotten, the same content sent again changes nothing while the
             forget can be undone, and is then refused with `conflict`. Each
             author's source IDs are their own. The ID is kept after its memory
-            is forgotten, so it must not hold content: use the source's own ID,
-            not a title or a sentence."
+            is forgotten, and in history after an erase, so it must not hold
+            content or personal data: use the source's own ID, not a title, a
+            sentence or a person's name."
           example: ticket-1042
         url:
           type:
@@ -537,8 +542,9 @@ components:
                     content sent again changes nothing while the forget can be
                     undone, and is then refused with `conflict`. Each author's
                     source IDs are their own. The ID is kept after its memory is
-                    forgotten, so it must not hold content: use the source's own
-                    ID, not a title or a sentence."
+                    forgotten, and in history after an erase, so it must not
+                    hold content or personal data: use the source's own ID, not
+                    a title, a sentence or a person's name."
                   example: ticket-1042
               required:
                 - name
