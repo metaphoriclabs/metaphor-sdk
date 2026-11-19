@@ -10,6 +10,7 @@ import {
   draftRoutes,
   EraseUser,
   ForgetRequest,
+  KEY_NAME_PATTERN,
   listMemoriesRoute,
   openApiDocument,
   Principal,
@@ -230,6 +231,36 @@ describe("CreateApiKey", () => {
       expect(key(id)).toBe(false);
     }
   });
+
+  const named = (name: unknown) =>
+    CreateApiKey.safeParse({ name, scopes: ["memories:read"], user_id: null }).success;
+
+  it("takes a name of any script with single spaces between", () => {
+    for (const name of [
+      "server",
+      "CI → staging",
+      "サーバー 本番",
+      "Zoë's laptop",
+      "x".repeat(64),
+    ]) {
+      expect(named(name)).toBe(true);
+    }
+  });
+
+  it("refuses a name with a space at either end, a run of spaces or a line break", () => {
+    for (const name of [
+      "",
+      " server",
+      "server ",
+      "my  server",
+      "my\nserver",
+      "my\tserver",
+      "x".repeat(65),
+      7,
+    ]) {
+      expect(named(name)).toBe(false);
+    }
+  });
 });
 
 describe("request limits", () => {
@@ -390,6 +421,17 @@ describe("the published document", () => {
     // A key of the tenant's own server, held to no user.
     expect(admits(rule, null)).toBe(true);
     expect(CreateApiKey.shape.user_id.safeParse(null).success).toBe(true);
+  });
+
+  it("carries the rule for a key's name, as the schema checks it", () => {
+    const rule = property(servedSchemas, "CreateApiKey", "name");
+    expect(field(rule, "pattern")).toBe(KEY_NAME_PATTERN.source);
+    for (const name of ["server", "CI \u2192 staging", "\u30b5\u30fc\u30d0\u30fc \u672c\u756a"]) {
+      expect(admits(rule, name)).toBe(true);
+    }
+    for (const name of [" server", "server ", "my  server", "my\nserver", "x".repeat(65)]) {
+      expect(admits(rule, name)).toBe(false);
+    }
   });
 
   it("refuses personal as a shared space's name", () => {

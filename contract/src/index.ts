@@ -201,11 +201,27 @@ const endUserId = (message: string) =>
     // `pattern` takes anything but text, so `not` names the type, or a null user would fail it.
     .openapi({ not: { type: "string", pattern: `^${MEMBER}` } });
 
+/**
+ * A key's name: letters, marks, numbers, punctuation and symbols of any script, with single
+ * spaces between. It is the API's own pattern (packages/shared/src/key-name.ts), which checks
+ * more than a pattern every SDK reads can say. A test holds the two the same.
+ */
+export const KEY_NAME_PATTERN = /^[\p{L}\p{M}\p{N}\p{P}\p{S}]+(?: [\p{L}\p{M}\p{N}\p{P}\p{S}]+)*$/u;
+
 export const CreateApiKey = z
   .strictObject({
-    name: z.string().min(1).max(64).openapi({
-      description: "Your label for the key: 1 to 64 visible characters, single spaces between.",
-    }),
+    // `.regex` would write the `u` flag into the document's pattern, which no SDK reads, so
+    // the schema checks it by hand and the document names the pattern alone.
+    name: z
+      .string()
+      .min(1)
+      .max(64)
+      .refine((name) => KEY_NAME_PATTERN.test(name), "A key's name is not one")
+      .openapi({
+        pattern: KEY_NAME_PATTERN.source,
+        description:
+          "Your label for the key: 1 to 64 letters, numbers, punctuation marks or symbols of any script, with single spaces between, in Unicode NFC. A character that draws nothing, such as a zero-width space or a Hangul filler, is refused.",
+      }),
     scopes: z.array(Scope).min(1).max(Scope.options.length),
     user_id: endUserId(
       "A key's user is visible ASCII but \" and \\, and never a member's metaphor: ID.",
