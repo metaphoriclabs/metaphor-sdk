@@ -21,6 +21,7 @@ components:
         - key-limit
         - conflict
         - forget-undone
+        - user-erased
         - too-large
         - unsupported-media-type
         - rate-limited
@@ -48,6 +49,9 @@ components:
 
         - `forget-undone` (409): a forget sent again under an `Idempotency-Key`
         whose forget was undone. Nothing was taken.
+
+        - `user-erased` (409): the acting user was erased after this request was
+        let in. Nothing was done.
 
         - `too-large` (413): the request body is too large.
 
@@ -828,8 +832,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "409":
-          description: The source ID is already used, by other content or by a memory
-            forgotten past undoing. Replacing an item is not served yet.
+          description: "`conflict`: the source ID is already used, by other content or by
+            a memory forgotten past undoing. Replacing an item is not served
+            yet. `user-erased`: the acting user was erased after the request was
+            let in. Nothing was kept."
           content:
             application/json:
               schema:
@@ -927,6 +933,13 @@ paths:
                 $ref: "#/components/schemas/Error"
         "404":
           description: No such shared space.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "`user-erased`: the acting user was erased after the request was
+            let in. Nothing was done."
           content:
             application/json:
               schema:
@@ -1062,13 +1075,17 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "409":
-          description: The forget was sent again under an `Idempotency-Key` whose forget
-            was undone. Nothing was taken. `forget` is that forget. Send a new
-            key to forget again.
+          description: "`forget-undone`: the forget was sent again under an
+            `Idempotency-Key` whose forget was undone. Nothing was taken.
+            `forget` is that forget. Send a new key to forget again.
+            `user-erased`: the acting user was erased after the request was let
+            in. Nothing was taken."
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ForgetUndoneError"
+                anyOf:
+                  - $ref: "#/components/schemas/ForgetUndoneError"
+                  - $ref: "#/components/schemas/Error"
         "413":
           description: The request body is longer than 16,384 bytes.
           content:
@@ -1169,6 +1186,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "409":
+          description: "`user-erased`: the acting user was erased after the request was
+            let in. Nothing was done."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "429":
           description: The API key sent more than 600 requests in a minute, the user's
             keys together more than 2000, or the tenant's keys together more
@@ -1252,6 +1276,13 @@ paths:
                 $ref: "#/components/schemas/Error"
         "404":
           description: No such forget, or no such shared space.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "`user-erased`: the acting user was erased after the request was
+            let in. Nothing was done."
           content:
             application/json:
               schema:

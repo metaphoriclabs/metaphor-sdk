@@ -24,6 +24,7 @@ const ERROR_CODES = [
   "key-limit",
   "conflict",
   "forget-undone",
+  "user-erased",
   "too-large",
   "unsupported-media-type",
   "rate-limited",
@@ -51,6 +52,7 @@ export const ERROR_STATUS = {
   "key-limit": 409,
   conflict: 409,
   "forget-undone": 409,
+  "user-erased": 409,
   "too-large": 413,
   "unsupported-media-type": 415,
   "rate-limited": 429,
@@ -71,6 +73,7 @@ export const ErrorCode = z.enum(ERROR_CODES).openapi("ErrorCode", {
     "- `key-limit` (409): the tenant or the user holds as many working keys as it may.",
     "- `conflict` (409): the request disagrees with what is kept, such as a source ID already used.",
     "- `forget-undone` (409): a forget sent again under an `Idempotency-Key` whose forget was undone. Nothing was taken.",
+    "- `user-erased` (409): the acting user was erased after this request was let in. Nothing was done.",
     "- `too-large` (413): the request body is too large.",
     "- `unsupported-media-type` (415): the body was not sent as `application/json`.",
     "- `rate-limited` (429): too many requests. Wait the seconds `Retry-After` gives.",
@@ -864,7 +867,7 @@ export const writeMemoryRoute = createRoute({
     },
     ...acting,
     409: refused(
-      "The source ID is already used, by other content or by a memory forgotten past undoing. Replacing an item is not served yet.",
+      "`conflict`: the source ID is already used, by other content or by a memory forgotten past undoing. Replacing an item is not served yet. `user-erased`: the acting user was erased after the request was let in. Nothing was kept.",
     ),
     413: tooLarge(BODY_LIMITS.writeMemory),
     415: json,
@@ -928,6 +931,9 @@ export const recallRoute = createRoute({
       content: { "application/json": { schema: Recall } },
     },
     ...acting,
+    409: refused(
+      "`user-erased`: the acting user was erased after the request was let in. Nothing was done.",
+    ),
     413: tooLarge(BODY_LIMITS.recall),
     415: json,
     503: refused(
@@ -984,8 +990,8 @@ export const forgetRoute = createRoute({
     ...acting,
     409: {
       description:
-        "The forget was sent again under an `Idempotency-Key` whose forget was undone. Nothing was taken. `forget` is that forget. Send a new key to forget again.",
-      content: { "application/json": { schema: ForgetUndoneError } },
+        "`forget-undone`: the forget was sent again under an `Idempotency-Key` whose forget was undone. Nothing was taken. `forget` is that forget. Send a new key to forget again. `user-erased`: the acting user was erased after the request was let in. Nothing was taken.",
+      content: { "application/json": { schema: z.union([ForgetUndoneError, ApiError]) } },
     },
     413: tooLarge(BODY_LIMITS.forget),
     415: json,
@@ -1015,6 +1021,9 @@ export const getForgetRoute = createRoute({
     },
     ...acting,
     404: refused("No such forget, or no such shared space."),
+    409: refused(
+      "`user-erased`: the acting user was erased after the request was let in. Nothing was done.",
+    ),
     503: refused("The request could not be checked. Try again later."),
   },
 });
@@ -1034,6 +1043,9 @@ export const undoForgetRoute = createRoute({
     },
     ...acting,
     404: refused("No such forget, or no such shared space."),
+    409: refused(
+      "`user-erased`: the acting user was erased after the request was let in. Nothing was done.",
+    ),
     503: refused("The request could not be checked. Try again later."),
   },
 });
@@ -1110,9 +1122,9 @@ export const eraseUserRoute = createRoute({
   summary: "Erase an end user",
   description: `Needs \`users:erase\`; a key held to a user may erase only that user. Only an end user: a member is removed in the console, where their private memories are hidden at once and erased 30 days later. Erases the user's personal space and everything they wrote in the key's project, takes them out of every group, revokes every key held to them and removes their ID from those keys' records. It cannot be undone, and it answers the same whether or not the user had anything. The ID is sent in the body so it never appears in a URL. The body may be up to ${BODY_LIMITS.eraseUser.toLocaleString("en")} bytes.
 
-A request for the user that is in flight when the erase runs may fail, or may land after it: a write let in before the erase can be kept in the new, empty space, as one your server sends after it would be. The erase empties the space; it does not bar it. Stop sending for the user before you erase them, and erase again if a write raced the erase. If the erase answers 5xx, what it did stays done and the user's space reads nothing; send it again to finish it. Their own keys are revoked by then, so send it with a key of your server.
+A request for the user that is in flight when the erase runs may fail, or is answered 409 \`user-erased\` if it reaches their space after the erase: nothing it asked for is done. A request your server sends after the erase is served: the erase empties the space; it does not bar the user. Stop sending for the user before you erase them. If the erase answers 5xx, what it did stays done and the user's space reads nothing; send it again to finish it, since until it answers 202 a request let in before it may still be kept. Their own keys are revoked by then, so send it with a key of your server.
 
-What stays. For 30 days, Cloudflare's point-in-time history keeps two things from before the erase. One is your keys' records, with the user's ID and the names of their keys. The other is the space's log rows, with memory IDs, kinds and times. A memory ID is a hash of the memory's content with no key, so whoever holds that history can confirm a guess at what a memory said. With the key Metaphor holds for your tenant, the same history also opens which memory IDs each forget, hide and restore named and when, the space's key changes, and its settings. None of these holds what a memory said. Only Cloudflare reaches that history, and whoever restores the object from it, which includes Metaphor by shipping code that does so; no code here restores a real space. The name of the user's space, a keyed hash of their ID, is kept for good. If you gave another key a name that holds the user's ID, the name stays: it is live data, not history, so revoke that key to remove it.`,
+What stays. For 30 days, Cloudflare's point-in-time history keeps two things from before the erase. One is your keys' records, with the user's ID and the names of their keys. The other is the space's log rows, with memory IDs, kinds and times. A memory ID is a hash of the memory's content with no key, so whoever holds that history can confirm a guess at what a memory said. With the key Metaphor holds for your tenant, the same history also opens which memory IDs each forget, hide and restore named and when, the space's key changes, and its settings. None of these holds what a memory said. Only Cloudflare reaches that history, and whoever restores the object from it, which includes Metaphor by shipping code that does so; no code here restores a real space. The name of the user's space, a keyed hash of their ID, is kept for good, and so is one number in the space: how many erases your tenant had made when it was wiped, which holds nothing of the user. If you gave another key a name that holds the user's ID, the name stays: it is live data, not history, so revoke that key to remove it.`,
   security,
   request: {
     body: { required: true, content: { "application/json": { schema: EraseUser } } },
