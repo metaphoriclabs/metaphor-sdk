@@ -283,6 +283,13 @@ importers:
         version: 7.0.2
 
   mcp:
+    dependencies:
+      '@metaphoriclabs/contract':
+        specifier: workspace:*
+        version: link:../contract
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.7
     devDependencies:
       tsdown:
         specifier: 'catalog:'
@@ -290,6 +297,9 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   sdk-py: {}
 
