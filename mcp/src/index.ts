@@ -33,11 +33,28 @@ export interface ToolDefinition<Shape extends z.ZodRawShape> {
   readonly annotations: ToolAnnotations;
 }
 
+/**
+ * A remember call's idempotency key: a UUID in lowercase, as most tools write one. It is the
+ * memory's source ID, and the contract asks that a source ID carry no content, since the hash
+ * of it stays in the space's log after the memory is erased. A UUID can't hold the person's
+ * words where free text could. api holds a key to the same rule (apps/api, REMEMBER_KEY).
+ */
+export const REMEMBER_KEY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
 const remember = {
   title: "Remember",
   description:
     "Keep something to recall in later conversations: a fact about the person, a preference, a decision, or what was done and why. Write it in plain words that will still make sense out of this conversation, one thing per call. Answers with the memory's ID.",
-  inputSchema: { content: WriteMemory.shape.content },
+  inputSchema: {
+    content: WriteMemory.shape.content,
+    idempotency_key: z
+      .string()
+      .regex(REMEMBER_KEY)
+      .optional()
+      .describe(
+        "A new UUID for this memory, in lowercase. Send the same one only to retry this call, such as after a timeout: the retry then finds the memory the first call made instead of keeping it twice. Without one, every call keeps a new memory. The key comes back as the memory's source.id when the API lists or reads it.",
+      ),
+  },
   annotations: {
     title: "Remember",
     readOnlyHint: false,

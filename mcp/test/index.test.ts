@@ -4,6 +4,13 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { resultOf, TOOLS } from "../src/index.ts";
 
+/** `key` with only its group `group` (0 to 4) in uppercase, so each group's case is tested alone. */
+const upperIn = (key: string, group: number) =>
+  key
+    .split("-")
+    .map((part, at) => (at === group ? part.toUpperCase() : part))
+    .join("-");
+
 const ID = "0123456789abcdef0123456789abcdef";
 const input = (tool: keyof typeof TOOLS) => z.object(TOOLS[tool].inputSchema);
 
@@ -80,6 +87,26 @@ describe("TOOLS", () => {
     expect(input("remember").safeParse({ content: "Prefers tea" }).success).toBe(true);
     for (const content of ["", "   ", "x".repeat(32_001)]) {
       expect(input("remember").safeParse({ content }).success).toBe(false);
+    }
+    const key = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    expect(
+      input("remember").safeParse({ content: "Prefers tea", idempotency_key: key }).success,
+    ).toBe(true);
+    // A key is a lowercase UUID, so it can't carry the person's words (REMEMBER_KEY).
+    for (const idempotency_key of [
+      key.toUpperCase(),
+      ...[0, 1, 2, 3, 4].map((group) => upperIn(key, group)),
+      `${key}0`,
+      key.replaceAll("-", ""),
+      ` ${key}`,
+      "prefers-tea",
+      "",
+      null,
+    ]) {
+      expect(
+        input("remember").safeParse({ content: "Prefers tea", idempotency_key }).success,
+        String(idempotency_key),
+      ).toBe(false);
     }
     expect(input("recall").parse({ question: "What tea?" }).budget).toBe(2000);
     for (const asked of [
