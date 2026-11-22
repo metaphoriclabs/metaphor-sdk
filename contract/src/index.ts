@@ -515,7 +515,7 @@ export const Source = z
       }),
     id: z.string().min(1).max(256).regex(PLAIN).openapi({
       description:
-        "The item's ID at the source. Writing the same source ID again with the same content changes nothing. Content is compared as it is kept, with credentials such as API keys hidden, so text that differs only in one counts as the same. With other content, it is refused with `conflict` until replacing an item is served. Once its memory is forgotten, the same content sent again changes nothing while the forget can be undone, and is then refused with `conflict`. Each author's source IDs are their own. The ID is kept after its memory is forgotten, and in history after an erase, so it must not hold content or personal data: use the source's own ID, not a title, a sentence or a person's name.",
+        "The item's ID at the source. Writing the same source ID again with the same content changes nothing. Content is compared as it is kept, with credentials such as API keys hidden, so text that differs only in one counts as the same. With other content, it is refused with `conflict` until replacing an item is served. Once its memory is forgotten, the same content sent again changes nothing while the forget can be undone, and is then refused with `conflict`. Each author's source IDs are their own. The ID is kept sealed with its memory and erased with it, but the memory's ID is a hash of it that stays after the memory is forgotten, and in history after an erase. A guess at the source ID can be checked against that hash, so it must not hold content or personal data: use the source's own ID, not a title, a sentence or a person's name.",
       example: "ticket-1042",
     }),
     // URL_TEXT is checked on the text as sent: z.url() trims it and drops tabs and line breaks
@@ -592,8 +592,14 @@ export const Memory = z
     id: MemoryId,
     content: z.string(),
     source: z.object({
-      name: z.string().nullable().openapi({ description: "Null: not kept yet." }),
-      id: z.string().nullable().openapi({ description: "Null: not kept yet." }),
+      name: z.string().nullable().openapi({
+        description:
+          "The source's name, as it was written. Null for a memory written before sources were kept, or written from the console's playground.",
+      }),
+      id: z.string().nullable().openapi({
+        description:
+          "The item's ID at the source, as it was written. It is kept with the memory and erased with it. Null when `name` is.",
+      }),
       url: z.string().nullable(),
     }),
     author: z.object({
