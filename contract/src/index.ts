@@ -591,7 +591,11 @@ export const Memory = z
   .object({
     id: MemoryId,
     content: z.string(),
-    source: z.object({ name: z.string(), id: z.string(), url: z.string().nullable() }),
+    source: z.object({
+      name: z.string().nullable().openapi({ description: "Null: not kept yet." }),
+      id: z.string().nullable().openapi({ description: "Null: not kept yet." }),
+      url: z.string().nullable(),
+    }),
     author: z.object({
       user_id: z.string().nullable().openapi({
         description:
@@ -1153,6 +1157,8 @@ export const routes = [
   forgetRoute,
   getForgetRoute,
   undoForgetRoute,
+  listMemoriesRoute,
+  getMemoryRoute,
 ];
 
 /**
@@ -1163,8 +1169,6 @@ export const draftRoutes = [
   listSpacesRoute,
   putSpaceRoute,
   deleteSpaceRoute,
-  listMemoriesRoute,
-  getMemoryRoute,
   listGroupsRoute,
   putGroupRoute,
   deleteGroupRoute,

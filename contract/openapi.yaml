@@ -575,6 +575,105 @@ components:
         `author`, everything one user wrote in the space. Served today:
         `memory_ids`, and `source` without `author`, in the `personal` space.
         The others are refused with `invalid-request` until they are served."
+    MemoryList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Memory"
+        next:
+          type:
+            - string
+            - "null"
+          description: Send as `after` for the next page. Null on the last page. A page
+            holds `limit` items unless it is the last.
+      required:
+        - data
+        - next
+    Memory:
+      type: object
+      properties:
+        id:
+          type: string
+          pattern: ^[0-9a-f]{32}$
+          description: A memory's ID, made from its source. The same source gives the same
+            ID in every space, so an ID names a memory only within its space.
+          example: 4f1c9a7e2b8d06c3a5e9f17b20d4c8e6
+        content:
+          type: string
+        source:
+          type: object
+          properties:
+            name:
+              type:
+                - string
+                - "null"
+              description: "Null: not kept yet."
+            id:
+              type:
+                - string
+                - "null"
+              description: "Null: not kept yet."
+            url:
+              type:
+                - string
+                - "null"
+          required:
+            - name
+            - id
+            - url
+        author:
+          type: object
+          properties:
+            user_id:
+              type:
+                - string
+                - "null"
+              description: "Null when the author is an end user other than the acting user:
+                Metaphor keeps no other end user's ID as you send it, so it has
+                none to show."
+            agent:
+              type:
+                - string
+                - "null"
+              description: The agent that wrote it, if any.
+          required:
+            - user_id
+            - agent
+        audience:
+          type: array
+          items:
+            type: string
+          description: Who may see it. An entry naming an end user other than the acting
+            user is left out, for the same reason.
+        audience_omitted:
+          type: integer
+          description: How many entries were left out of `audience`.
+        occurred_at:
+          type: string
+          format: date-time
+          example: 2027-01-31T09:30:00Z
+        received_at:
+          type: string
+          format: date-time
+          example: 2027-01-31T09:30:00Z
+        status:
+          type: string
+          description: "`pending`: kept, and still being read for recall. `stored`: ready
+            for recall. `held`: kept, and seen by nobody but its author until it
+            can be read, for example when its source's sharing could not be
+            read."
+      required:
+        - id
+        - content
+        - source
+        - author
+        - audience
+        - audience_omitted
+        - occurred_at
+        - received_at
+        - status
   parameters: {}
 paths:
   /health:
@@ -869,6 +968,103 @@ paths:
         "503":
           description: The request could not be checked, or the tenant is not set up to
             take memories yet. Try again later.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    get:
+      summary: List memories
+      description: Needs `memories:read`. The memories in the space the acting user
+        can see or wrote, newest first, optionally only one agent's.
+      security: *a1
+      parameters:
+        - schema:
+            $ref: "#/components/schemas/SpaceId"
+          required: true
+          description: "`personal` for the acting user's own space, or a shared space's
+            ID: 1 to 63 lowercase letters, digits and hyphens, starting with a
+            letter or digit. `personal` always answers: before the user's first
+            write it holds nothing."
+          name: space_id
+          in: path
+        - schema:
+            type: string
+            maxLength: 512
+          required: false
+          name: after
+          in: query
+        - schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+            description: 1 to 100, written in plain digits. 50 when left out.
+          required: false
+          description: 1 to 100, written in plain digits. 50 when left out.
+          name: limit
+          in: query
+        - schema:
+            type: string
+            pattern: ^[a-z0-9][a-z0-9-]{0,62}$
+          required: false
+          name: agent
+          in: query
+        - schema:
+            $ref: "#/components/schemas/UserId"
+          required: false
+          description: The user this request acts for. Required for a key of your own
+            server; a key held to a user may leave it out, or send that user's
+            ID. A server key acts for a member only where the owner turned that
+            on for the project, and each such request is recorded.
+          name: metaphor-user
+          in: header
+      responses:
+        "200":
+          description: A page of memories.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryList"
+        "400":
+          description: The request is not valid, or names no user to act for.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: No valid API key was sent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The API key does not allow this, or not for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such shared space.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: The API key sent more than 600 requests in a minute, the user's
+            keys together more than 2000, or the tenant's keys together more
+            than 6000. Wait the seconds `Retry-After` gives.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Something went wrong. Try again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: The request could not be checked. Try again.
           content:
             application/json:
               schema:
@@ -1303,6 +1499,93 @@ paths:
                 $ref: "#/components/schemas/Error"
         "503":
           description: The request could not be checked. Try again later.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /v1/spaces/{space_id}/memories/{memory_id}:
+    get:
+      summary: Read a memory
+      description: Needs `memories:read`. A memory the acting user can neither see nor
+        wrote answers as if it did not exist.
+      security: *a1
+      parameters:
+        - schema:
+            $ref: "#/components/schemas/SpaceId"
+          required: true
+          description: "`personal` for the acting user's own space, or a shared space's
+            ID: 1 to 63 lowercase letters, digits and hyphens, starting with a
+            letter or digit. `personal` always answers: before the user's first
+            write it holds nothing."
+          name: space_id
+          in: path
+        - schema:
+            type: string
+            pattern: ^[0-9a-f]{32}$
+            description: A memory's ID, made from its source. The same source gives the same
+              ID in every space, so an ID names a memory only within its space.
+            example: 4f1c9a7e2b8d06c3a5e9f17b20d4c8e6
+          required: true
+          description: A memory's ID, made from its source. The same source gives the same
+            ID in every space, so an ID names a memory only within its space.
+          name: memory_id
+          in: path
+        - schema:
+            $ref: "#/components/schemas/UserId"
+          required: false
+          description: The user this request acts for. Required for a key of your own
+            server; a key held to a user may leave it out, or send that user's
+            ID. A server key acts for a member only where the owner turned that
+            on for the project, and each such request is recorded.
+          name: metaphor-user
+          in: header
+      responses:
+        "200":
+          description: The memory.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Memory"
+        "400":
+          description: The request is not valid, or names no user to act for.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: No valid API key was sent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The API key does not allow this, or not for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such memory, or no such shared space.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: The API key sent more than 600 requests in a minute, the user's
+            keys together more than 2000, or the tenant's keys together more
+            than 6000. Wait the seconds `Retry-After` gives.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Something went wrong. Try again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: The request could not be checked. Try again.
           content:
             application/json:
               schema:
