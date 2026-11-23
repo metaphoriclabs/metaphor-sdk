@@ -79,7 +79,7 @@ export const ErrorCode = z.enum(ERROR_CODES).openapi("ErrorCode", {
     "- `rate-limited` (429): too many requests. Wait the seconds `Retry-After` gives.",
     `- \`open-forgets\` (429): the space holds ${OPEN_FORGETS_LIMIT.toLocaleString("en")} forgets open. \`frees_at\` says when the earliest one's undo window ends, at most 30 days away. Undoing a forget frees a place at once.`,
     "- `internal` (500): something went wrong. Try again.",
-    "- `unavailable` (503): the request could not be checked. Try again.",
+    "- `unavailable` (503): the request could not be checked or served. Try again. When `Retry-After` is sent, nothing was done: send the request again after that many seconds.",
     "",
     "New codes may be added. Treat one you do not know by its status.",
     "",
