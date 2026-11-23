@@ -1,4 +1,4 @@
-# Generated from metaphor's pnpm-workspace.yaml by tooling/sdk-snapshot.ts. Don't edit by hand.
+# Generated from metaphor's pnpm-workspace.yaml by tooling/generate/sdk-snapshot.ts. Don't edit by hand.
 packages:
   - "*"
 minimumReleaseAge: 4320
