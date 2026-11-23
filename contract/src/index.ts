@@ -622,6 +622,10 @@ export const Memory = z
       description:
         "`pending`: kept, and still being read for recall. `stored`: ready for recall. `held`: kept, and seen by nobody but its author until it can be read, for example when its source's sharing could not be read.",
     }),
+    last_recalled_at: Time.nullable().openapi({
+      description:
+        "When a recall last returned it, to the minute. Null when none has in the last 90 days. Forgetting it clears this, and an undo does not bring it back.",
+    }),
   })
   .openapi("Memory");
 export type Memory = z.infer<typeof Memory>;

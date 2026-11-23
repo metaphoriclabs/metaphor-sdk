@@ -672,6 +672,15 @@ components:
             for recall. `held`: kept, and seen by nobody but its author until it
             can be read, for example when its source's sharing could not be
             read."
+        last_recalled_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+          example: 2027-01-31T09:30:00Z
+          description: When a recall last returned it, to the minute. Null when none has
+            in the last 90 days. Forgetting it clears this, and an undo does not
+            bring it back.
       required:
         - id
         - content
@@ -682,6 +691,7 @@ components:
         - occurred_at
         - received_at
         - status
+        - last_recalled_at
   parameters: {}
 paths:
   /health:
