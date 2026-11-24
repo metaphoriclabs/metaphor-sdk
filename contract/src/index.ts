@@ -25,6 +25,7 @@ const ERROR_CODES = [
   "conflict",
   "forget-undone",
   "user-erased",
+  "space-refused",
   "too-large",
   "unsupported-media-type",
   "rate-limited",
@@ -53,6 +54,7 @@ export const ERROR_STATUS = {
   conflict: 409,
   "forget-undone": 409,
   "user-erased": 409,
+  "space-refused": 409,
   "too-large": 413,
   "unsupported-media-type": 415,
   "rate-limited": 429,
@@ -74,6 +76,7 @@ export const ErrorCode = z.enum(ERROR_CODES).openapi("ErrorCode", {
     "- `conflict` (409): the request disagrees with what is kept, such as a source ID already used.",
     "- `forget-undone` (409): a forget sent again under an `Idempotency-Key` whose forget was undone. Nothing was taken.",
     "- `user-erased` (409): the acting user was erased after this request was let in. Nothing was done.",
+    "- `space-refused` (409): the space cannot be served as it stands, such as a space whose tenant's settings changed in a way the space cannot follow. Nothing was done. Sending the request again will not help until the space is changed.",
     "- `too-large` (413): the request body is too large.",
     "- `unsupported-media-type` (415): the body was not sent as `application/json`.",
     "- `rate-limited` (429): too many requests. Wait the seconds `Retry-After` gives.",
@@ -804,6 +807,15 @@ const tooLarge = (bytes: number) =>
 
 const json = refused("The body was not sent as `application/json`.");
 
+/** What every space route says of `space-refused`, which any of them can answer. */
+const SPACE_REFUSED =
+  "`space-refused`: the space cannot be served as it stands. Nothing was done. Sending the request again will not help.";
+
+/** A space route's 409 when `user-erased` and `space-refused` are its only ones. */
+const erasedOrRefused = refused(
+  `\`user-erased\`: the acting user was erased after the request was let in. Nothing was done. ${SPACE_REFUSED}`,
+);
+
 export const listSpacesRoute = createRoute({
   method: "get",
   path: "/v1/spaces",
@@ -881,7 +893,7 @@ export const writeMemoryRoute = createRoute({
     },
     ...acting,
     409: refused(
-      "`conflict`: the source ID is already used, by other content or by a memory forgotten past undoing. Replacing an item is not served yet. `user-erased`: the acting user was erased after the request was let in. Nothing was kept.",
+      `\`conflict\`: the source ID is already used, by other content or by a memory forgotten past undoing. Replacing an item is not served yet. \`user-erased\`: the acting user was erased after the request was let in. Nothing was kept. ${SPACE_REFUSED}`,
     ),
     413: tooLarge(BODY_LIMITS.writeMemory),
     415: json,
@@ -909,6 +921,7 @@ export const listMemoriesRoute = createRoute({
       content: { "application/json": { schema: MemoryList } },
     },
     ...acting,
+    409: erasedOrRefused,
   },
 });
 
@@ -924,6 +937,7 @@ export const getMemoryRoute = createRoute({
     200: { description: "The memory.", content: { "application/json": { schema: Memory } } },
     ...acting,
     404: refused("No such memory, or no such shared space."),
+    409: erasedOrRefused,
   },
 });
 
@@ -945,9 +959,7 @@ export const recallRoute = createRoute({
       content: { "application/json": { schema: Recall } },
     },
     ...acting,
-    409: refused(
-      "`user-erased`: the acting user was erased after the request was let in. Nothing was done.",
-    ),
+    409: erasedOrRefused,
     413: tooLarge(BODY_LIMITS.recall),
     415: json,
     503: refused(
@@ -1003,8 +1015,7 @@ export const forgetRoute = createRoute({
     },
     ...acting,
     409: {
-      description:
-        "`forget-undone`: the forget was sent again under an `Idempotency-Key` whose forget was undone. Nothing was taken. `forget` is that forget. Send a new key to forget again. `user-erased`: the acting user was erased after the request was let in. Nothing was taken.",
+      description: `\`forget-undone\`: the forget was sent again under an \`Idempotency-Key\` whose forget was undone. Nothing was taken. \`forget\` is that forget. Send a new key to forget again. \`user-erased\`: the acting user was erased after the request was let in. Nothing was taken. ${SPACE_REFUSED}`,
       content: { "application/json": { schema: z.union([ForgetUndoneError, ApiError]) } },
     },
     413: tooLarge(BODY_LIMITS.forget),
@@ -1035,9 +1046,7 @@ export const getForgetRoute = createRoute({
     },
     ...acting,
     404: refused("No such forget, or no such shared space."),
-    409: refused(
-      "`user-erased`: the acting user was erased after the request was let in. Nothing was done.",
-    ),
+    409: erasedOrRefused,
     503: refused("The request could not be checked. Try again later."),
   },
 });
@@ -1057,9 +1066,7 @@ export const undoForgetRoute = createRoute({
     },
     ...acting,
     404: refused("No such forget, or no such shared space."),
-    409: refused(
-      "`user-erased`: the acting user was erased after the request was let in. Nothing was done.",
-    ),
+    409: erasedOrRefused,
     503: refused("The request could not be checked. Try again later."),
   },
 });
