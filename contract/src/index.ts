@@ -623,7 +623,7 @@ export const Memory = z
     received_at: Time,
     status: z.string().openapi({
       description:
-        "`pending`: kept, and still being read for recall. `stored`: ready for recall. `held`: kept, and seen by nobody but its author until it can be read, for example when its source's sharing could not be read.",
+        "`stored`: kept. It is the one value served today, and does not say whether the memory is ready for recall. Other values may be added.",
     }),
     last_recalled_at: Time.nullable().openapi({
       description:

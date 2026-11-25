@@ -84,7 +84,7 @@ const recall = {
 const forget = {
   title: "Forget",
   description:
-    "Forget memories by their IDs, as remember and recall give them. They leave recall at once. The answer says until when the forget can be undone, from the Metaphor console; after that, nothing of them can be read again. Forget only what the person asked to forget, or what is wrong.",
+    "Forget memories by their IDs, as remember and recall give them. They leave recall at once. You can't undo it. The person can, until the time the answer gives, with their own API key that may forget: POST /v1/spaces/personal/forgets/{forget_id}/undo, with the forget's ID from the answer. After that, nothing of them can be read again. Forget only what the person asked to forget, or what is wrong.",
   inputSchema: {
     memory_ids: z.array(WrittenMemory.shape.id).min(1).max(100),
   },

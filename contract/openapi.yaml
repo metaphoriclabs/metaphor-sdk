@@ -676,10 +676,8 @@ components:
           example: 2027-01-31T09:30:00Z
         status:
           type: string
-          description: "`pending`: kept, and still being read for recall. `stored`: ready
-            for recall. `held`: kept, and seen by nobody but its author until it
-            can be read, for example when its source's sharing could not be
-            read."
+          description: "`stored`: kept. It is the one value served today, and does not say
+            whether the memory is ready for recall. Other values may be added."
         last_recalled_at:
           type:
             - string

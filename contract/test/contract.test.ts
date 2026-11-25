@@ -117,6 +117,14 @@ describe("contract v0 drafts", () => {
   });
 });
 
+describe("Memory", () => {
+  it("promises no status the API doesn't serve", () => {
+    const status = JSON.stringify(openApiDocument().components?.schemas?.Memory);
+    expect(status).toContain("`stored`");
+    expect(status).not.toMatch(/`pending`|`held`/);
+  });
+});
+
 describe("UserId", () => {
   it.each(["customer-4821", "metaphor:u1", "a.b@c"])("takes %s", (value) =>
     expect(UserId.safeParse(value).success).toBe(true),

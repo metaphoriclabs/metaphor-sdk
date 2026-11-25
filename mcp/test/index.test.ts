@@ -1,5 +1,6 @@
 // How each tool's answer reads to the model, and the rules its input is held to.
 
+import { undoForgetRoute } from "@metaphoriclabs/contract";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { resultOf, TOOLS } from "../src/index.ts";
@@ -81,6 +82,15 @@ describe("TOOLS", () => {
     expect(TOOLS.remember.annotations.readOnlyHint).toBe(false);
     expect(TOOLS.forget.annotations.destructiveHint).toBe(true);
     for (const tool of Object.values(TOOLS)) expect(tool.annotations.openWorldHint).toBe(false);
+  });
+
+  it("promises the agent no undo, and names the person's way", () => {
+    const { description } = TOOLS.forget;
+    const path = undoForgetRoute.path.replace("{space_id}", "personal");
+    expect(Object.keys(TOOLS)).toEqual(["remember", "recall", "forget"]);
+    expect(description).toContain("You can't undo it. The person can,");
+    expect(description).toContain(`with their own API key that may forget: POST ${path},`);
+    expect(description).not.toMatch(/console/i);
   });
 
   it("hold input to the API's own rules", () => {
