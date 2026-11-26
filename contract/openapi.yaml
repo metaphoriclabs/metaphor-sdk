@@ -64,8 +64,8 @@ components:
         - `unsupported-media-type` (415): the body was not sent as
         `application/json`.
 
-        - `rate-limited` (429): too many requests. Wait the seconds
-        `Retry-After` gives.
+        - `rate-limited` (429): too many requests, or a space's 200 forgets this
+        hour. Wait the seconds `Retry-After` gives.
 
         - `open-forgets` (429): the space holds 5,000 forgets open. `frees_at`
         says when the earliest one's undo window ends, at most 30 days away.
@@ -504,6 +504,19 @@ components:
                 place. Undoing a forget frees one at once.
           required:
             - frees_at
+    ForgetsPerHourError:
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
+          properties:
+            limit:
+              type: string
+              description: "Which limit was met. `forgets-per-hour`: the space made 200
+                forgets this clock hour (UTC). A string, not a closed list, so a
+                client made today still reads a limit added later. The
+                per-minute limits send no `limit`."
+          required:
+            - limit
     ForgetRequest:
       anyOf:
         - type: object
@@ -1230,8 +1243,12 @@ paths:
         nothing: a forget past that answers 429 `open-forgets` and changes
         nothing, for at most 30 days, until the earliest open forget's undo
         window ends. `frees_at` gives that time. Undoing a forget frees a place
-        at once. A forget sent again under an `Idempotency-Key` already honoured
-        is answered as before and is not counted. One whose forget was undone
+        at once. A space also makes at most 200 forgets in a clock hour (UTC),
+        counting forgets that matched nothing: past that a forget answers 429
+        `rate-limited`, changes nothing, and `Retry-After` gives the seconds
+        until the hour ends. Undoing a forget gives back no place in the hour. A
+        forget sent again under an `Idempotency-Key` already honoured is
+        answered as before and is not counted. One whose forget was undone
         answers 409 `forget-undone` with that forget, and takes nothing. Reading
         or undoing a forget is never refused for it. The body may be up to
         16,384 bytes."
@@ -1336,14 +1353,17 @@ paths:
         "429":
           description: "`rate-limited`: the API key sent more than 600 requests in a
             minute, the user's keys together more than 2000, or the tenant's
-            keys together more than 6000. Wait the seconds `Retry-After` gives.
-            `open-forgets`: the space holds 5,000 forgets open, and `frees_at`
-            says when a place frees. It sends no `Retry-After`."
+            keys together more than 6000, or the space made 200 forgets this
+            clock hour, when `limit` is `forgets-per-hour`. Wait the seconds
+            `Retry-After` gives. `open-forgets`: the space holds 5,000 forgets
+            open, and `frees_at` says when a place frees. It sends no
+            `Retry-After`."
           content:
             application/json:
               schema:
                 anyOf:
                   - $ref: "#/components/schemas/OpenForgetsError"
+                  - $ref: "#/components/schemas/ForgetsPerHourError"
                   - $ref: "#/components/schemas/Error"
         "500":
           description: Something went wrong. Try again.

@@ -41,6 +41,12 @@ const ERROR_CODES = [
 export const OPEN_FORGETS_LIMIT = 5_000;
 
 /**
+ * The most forgets one space makes in a clock hour (UTC), counting forgets that matched
+ * nothing. Filling a space's OPEN_FORGETS_LIMIT then takes a day, not minutes.
+ */
+export const FORGETS_PER_HOUR = 200;
+
+/**
  * The HTTP status each code always comes with: one entry for every code in `ERROR_CODES`, and
  * no other. A code is never renamed or given another status: a client may branch on it. New
  * codes may be added, so a client treats one it does not know by its status alone.
@@ -79,7 +85,7 @@ export const ErrorCode = z.enum(ERROR_CODES).openapi("ErrorCode", {
     "- `space-refused` (409): the space cannot be served as it stands, such as a space whose tenant's settings changed in a way the space cannot follow. Nothing was done. Sending the request again will not help until the space is changed.",
     "- `too-large` (413): the request body is too large.",
     "- `unsupported-media-type` (415): the body was not sent as `application/json`.",
-    "- `rate-limited` (429): too many requests. Wait the seconds `Retry-After` gives.",
+    `- \`rate-limited\` (429): too many requests, or a space's ${FORGETS_PER_HOUR} forgets this hour. Wait the seconds \`Retry-After\` gives.`,
     `- \`open-forgets\` (429): the space holds ${OPEN_FORGETS_LIMIT.toLocaleString("en")} forgets open. \`frees_at\` says when the earliest one's undo window ends, at most 30 days away. Undoing a forget frees a place at once.`,
     "- `internal` (500): something went wrong. Try again.",
     "- `unavailable` (503): the request could not be checked or served. Try again. When `Retry-After` is sent, nothing was done: send the request again after that many seconds.",
@@ -997,11 +1003,23 @@ export const OpenForgetsError = ApiError.extend({
 }).openapi("OpenForgetsError");
 export type OpenForgetsError = z.infer<typeof OpenForgetsError>;
 
+/**
+ * The answer to a forget refused because its space made FORGETS_PER_HOUR forgets this clock
+ * hour. Its code is `rate-limited`, shared with the per-minute limits, so `limit` tells the
+ * two apart for a client that must say which it met; the message is for people and may change.
+ */
+export const ForgetsPerHourError = ApiError.extend({
+  limit: z.string().openapi({
+    description: `Which limit was met. \`forgets-per-hour\`: the space made ${FORGETS_PER_HOUR} forgets this clock hour (UTC). A string, not a closed list, so a client made today still reads a limit added later. The per-minute limits send no \`limit\`.`,
+  }),
+}).openapi("ForgetsPerHourError");
+export type ForgetsPerHourError = z.infer<typeof ForgetsPerHourError>;
+
 export const forgetRoute = createRoute({
   method: "post",
   path: "/v1/spaces/{space_id}/forget",
   summary: "Forget",
-  description: `Needs \`memories:forget\`, which reaches only what the acting user wrote. \`memories:forget-others\` reaches what others wrote too, by \`memory_ids\`, \`source\` or \`author\`, whether or not the acting user can see it; each such forget is recorded and shown to the author. \`what\` always reaches only the acting user's own writing. What a forget reaches leaves recall at once, with every memory made from it, and can be brought back until the undo window closes. It answers the same whether or not anything matched. A forget by \`memory_ids\` or \`source\` takes the memories named and what was made from them, and nothing else: the same number or fact in another memory stays until that memory is forgotten too, as does the reply to a forgotten message unless it is named too. A memory another forget has already taken is passed over: if that forget is undone, the memory comes back, and this one does not hold it. A space holds at most ${OPEN_FORGETS_LIMIT.toLocaleString("en")} forgets open at once, counting forgets that matched nothing: a forget past that answers 429 \`open-forgets\` and changes nothing, for at most 30 days, until the earliest open forget's undo window ends. \`frees_at\` gives that time. Undoing a forget frees a place at once. A forget sent again under an \`Idempotency-Key\` already honoured is answered as before and is not counted. One whose forget was undone answers 409 \`forget-undone\` with that forget, and takes nothing. Reading or undoing a forget is never refused for it. The body may be up to ${BODY_LIMITS.forget.toLocaleString("en")} bytes.`,
+  description: `Needs \`memories:forget\`, which reaches only what the acting user wrote. \`memories:forget-others\` reaches what others wrote too, by \`memory_ids\`, \`source\` or \`author\`, whether or not the acting user can see it; each such forget is recorded and shown to the author. \`what\` always reaches only the acting user's own writing. What a forget reaches leaves recall at once, with every memory made from it, and can be brought back until the undo window closes. It answers the same whether or not anything matched. A forget by \`memory_ids\` or \`source\` takes the memories named and what was made from them, and nothing else: the same number or fact in another memory stays until that memory is forgotten too, as does the reply to a forgotten message unless it is named too. A memory another forget has already taken is passed over: if that forget is undone, the memory comes back, and this one does not hold it. A space holds at most ${OPEN_FORGETS_LIMIT.toLocaleString("en")} forgets open at once, counting forgets that matched nothing: a forget past that answers 429 \`open-forgets\` and changes nothing, for at most 30 days, until the earliest open forget's undo window ends. \`frees_at\` gives that time. Undoing a forget frees a place at once. A space also makes at most ${FORGETS_PER_HOUR} forgets in a clock hour (UTC), counting forgets that matched nothing: past that a forget answers 429 \`rate-limited\`, changes nothing, and \`Retry-After\` gives the seconds until the hour ends. Undoing a forget gives back no place in the hour. A forget sent again under an \`Idempotency-Key\` already honoured is answered as before and is not counted. One whose forget was undone answers 409 \`forget-undone\` with that forget, and takes nothing. Reading or undoing a forget is never refused for it. The body may be up to ${BODY_LIMITS.forget.toLocaleString("en")} bytes.`,
   security,
   request: {
     headers: forgetHeaders,
@@ -1021,8 +1039,10 @@ export const forgetRoute = createRoute({
     413: tooLarge(BODY_LIMITS.forget),
     415: json,
     429: {
-      description: `\`rate-limited\`: the API key sent more than 600 requests in a minute, the user's keys together more than 2000, or the tenant's keys together more than 6000. Wait the seconds \`Retry-After\` gives. \`open-forgets\`: the space holds ${OPEN_FORGETS_LIMIT.toLocaleString("en")} forgets open, and \`frees_at\` says when a place frees. It sends no \`Retry-After\`.`,
-      content: { "application/json": { schema: z.union([OpenForgetsError, ApiError]) } },
+      description: `\`rate-limited\`: the API key sent more than 600 requests in a minute, the user's keys together more than 2000, or the tenant's keys together more than 6000, or the space made ${FORGETS_PER_HOUR} forgets this clock hour, when \`limit\` is \`forgets-per-hour\`. Wait the seconds \`Retry-After\` gives. \`open-forgets\`: the space holds ${OPEN_FORGETS_LIMIT.toLocaleString("en")} forgets open, and \`frees_at\` says when a place frees. It sends no \`Retry-After\`.`,
+      content: {
+        "application/json": { schema: z.union([OpenForgetsError, ForgetsPerHourError, ApiError]) },
+      },
     },
     503: refused(
       "The request could not be checked, or the tenant is not set up for this space yet. Try again later.",
