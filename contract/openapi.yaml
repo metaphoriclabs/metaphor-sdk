@@ -23,6 +23,7 @@ components:
         - forget-undone
         - user-erased
         - space-refused
+        - space-full
         - too-large
         - unsupported-media-type
         - rate-limited
@@ -58,6 +59,10 @@ components:
         as a space whose tenant's settings changed in a way the space cannot
         follow. Nothing was done. Sending the request again will not help until
         the space is changed.
+
+        - `space-full` (409): the space holds as much as it may, so the memory
+        was not kept. Forgetting memories frees room only when their 30-day undo
+        window closes.
 
         - `too-large` (413): the request body is too large.
 
@@ -971,8 +976,10 @@ paths:
           description: "`conflict`: the source ID is already used, by other content or by
             a memory forgotten past undoing. Replacing an item is not served
             yet. `user-erased`: the acting user was erased after the request was
-            let in. Nothing was kept. `space-refused`: the space cannot be
-            served as it stands. Nothing was done. Sending the request again
+            let in. Nothing was kept. `space-full`: the space holds as much as
+            it may. Nothing was kept. Forgetting memories frees room only when
+            their 30-day undo window closes. `space-refused`: the space cannot
+            be served as it stands. Nothing was done. Sending the request again
             will not help."
           content:
             application/json:
